@@ -1,7 +1,6 @@
 services:
   app:
     build:
-      context: ..
       dockerfile: docker/Dockerfile
     container_name: numok_app
     restart: unless-stopped
