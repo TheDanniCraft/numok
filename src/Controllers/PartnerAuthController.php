@@ -144,7 +144,6 @@ class PartnerAuthController extends PartnerBaseController
                 'password' => password_hash($_POST['password'], PASSWORD_DEFAULT),
                 'company_name' => $companyName,
                 'contact_name' => $contactName,
-                'payment_email' => $email,
                 'status' => 'active'  // Automatically activate partners
             ]);
 

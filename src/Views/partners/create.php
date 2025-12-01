@@ -66,15 +66,6 @@
                             </div>
                             <p class="mt-3 text-sm leading-6 text-gray-600">This email will be used for account login.</p>
                         </div>
-
-                        <div class="sm:col-span-4">
-                            <label for="payment_email" class="block text-sm font-medium leading-6 text-gray-900">Payment Email</label>
-                            <div class="mt-2">
-                                <input type="email" name="payment_email" id="payment_email"
-                                       class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
-                            </div>
-                            <p class="mt-3 text-sm leading-6 text-gray-600">Where commission payments will be sent. Leave blank to use login email.</p>
-                        </div>
                     </div>
                 </div>
             </div>

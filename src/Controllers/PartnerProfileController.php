@@ -34,7 +34,6 @@ class PartnerProfileController extends PartnerBaseController {
         $partnerId = $_SESSION['partner_id'];
         $currentPassword = $_POST['current_password'] ?? '';
         $newEmail = filter_var($_POST['email'] ?? '', FILTER_VALIDATE_EMAIL);
-        $paymentEmail = filter_var($_POST['payment_email'] ?? '', FILTER_VALIDATE_EMAIL);
         $newPassword = $_POST['new_password'] ?? '';
         $confirmPassword = $_POST['confirm_password'] ?? '';
 
@@ -72,11 +71,6 @@ class PartnerProfileController extends PartnerBaseController {
                 $params[] = $newEmail;
             }
 
-            // Handle payment email update
-            if ($paymentEmail && $paymentEmail !== $partner['payment_email']) {
-                $updates[] = "payment_email = ?";
-                $params[] = $paymentEmail;
-            }
 
             // Handle password update
             if ($newPassword) {

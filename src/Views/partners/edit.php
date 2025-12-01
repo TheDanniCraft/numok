@@ -75,16 +75,6 @@
                                     </div>
 
                                     <div class="sm:col-span-6">
-                                        <label for="payment_email" class="block text-sm font-medium text-gray-700">Payment Email</label>
-                                        <div class="mt-1">
-                                            <input type="email" name="payment_email" id="payment_email"
-                                                value="<?= htmlspecialchars($partner['payment_email']) ?>"
-                                                class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
-                                        </div>
-                                        <p class="mt-2 text-sm text-gray-500">Where commission payments will be sent.</p>
-                                    </div>
-
-                                    <div class="sm:col-span-6">
                                         <label for="status" class="block text-sm font-medium text-gray-700">Status</label>
                                         <select id="status" name="status" 
                                                 class="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">

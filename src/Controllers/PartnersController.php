@@ -73,7 +73,6 @@ class PartnersController extends Controller
             'email' => $email,
             'company_name' => $_POST['company_name'] ?? '',
             'contact_name' => $_POST['contact_name'] ?? '',
-            'payment_email' => $_POST['payment_email'] ?? $email,
             'status' => 'pending',
             'password' => password_hash($_POST['password'] ?? bin2hex(random_bytes(8)), PASSWORD_DEFAULT)
         ];
@@ -160,7 +159,6 @@ class PartnersController extends Controller
         }
 
         $data = [
-            'payment_email' => $_POST['payment_email'] ?? '',
             'status' => $_POST['status'] ?? 'pending'
         ];
 
