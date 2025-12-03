@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 // Start session
@@ -36,6 +37,8 @@ $routes = [
     'password/reset' => ['PasswordResetController', 'reset'],
     'settings' => ['PartnerProfileController', 'index'],
     'settings/update' => ['PartnerProfileController', 'update'],
+    'payout/link' => ['PayoutController', 'linkCustomerAccount'],
+    'payout/unlink' => ['PayoutController', 'unlinkCustomerAccount'],
     'logout' => ['PartnerAuthController', 'logout'],
     'dashboard' => ['PartnerDashboardController', 'index'],
     'tracking' => ['PartnerTrackingController', 'index'],
