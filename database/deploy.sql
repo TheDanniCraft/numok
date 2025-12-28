@@ -30,6 +30,37 @@ CREATE TABLE `clicks` (
 
 
 
+# Dump of table payouts
+# ------------------------------------------------------------
+
+DROP TABLE IF EXISTS `payouts`;
+
+CREATE TABLE `payouts` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `partner_id` int unsigned NOT NULL,
+  `stripe_transfer_id` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+
+  -- total of all selected conversions before any fees
+  `amount` decimal(10,2) NOT NULL,
+  -- your + Stripe fees
+  `fee_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+  -- what you actually send to Stripe
+  `net_amount` decimal(10,2) NOT NULL,
+
+  `status` enum('pending','processing','paid','failed','canceled') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `failure_reason` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  KEY `partner_id` (`partner_id`),
+  KEY `idx_stripe_transfer_id` (`stripe_transfer_id`),
+  CONSTRAINT `payouts_ibfk_1` FOREIGN KEY (`partner_id`) REFERENCES `partners` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+
 # Dump of table conversions
 # ------------------------------------------------------------
 
@@ -42,6 +73,7 @@ CREATE TABLE `conversions` (
   `amount` decimal(10,2) NOT NULL,
   `commission_amount` decimal(10,2) NOT NULL,
   `status` enum('pending','payable','rejected','paid') COLLATE utf8mb4_unicode_ci DEFAULT 'pending',
+  `payout_id` int unsigned DEFAULT NULL,
   `customer_email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `metadata` json DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
@@ -50,7 +82,9 @@ CREATE TABLE `conversions` (
   UNIQUE KEY `stripe_payment_id` (`stripe_payment_id`),
   KEY `partner_program_id` (`partner_program_id`),
   KEY `idx_stripe_payment` (`stripe_payment_id`),
-  CONSTRAINT `conversions_ibfk_1` FOREIGN KEY (`partner_program_id`) REFERENCES `partner_programs` (`id`) ON DELETE CASCADE
+  KEY `idx_payout_id` (`payout_id`),
+  CONSTRAINT `conversions_ibfk_1` FOREIGN KEY (`partner_program_id`) REFERENCES `partner_programs` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `conversions_ibfk_2` FOREIGN KEY (`payout_id`) REFERENCES `payouts` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
@@ -109,6 +143,9 @@ CREATE TABLE `partners` (
   `company_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `contact_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `stripe_customer_id` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `stripe_account_id` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `stripe_payout_status` enum('not_connected','pending','enabled','disabled') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'not_connected',
+  `stripe_payout_disabled_reason` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `status` enum('pending','active','rejected','suspended') COLLATE utf8mb4_unicode_ci DEFAULT 'pending',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
