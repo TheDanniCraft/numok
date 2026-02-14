@@ -129,7 +129,7 @@ CREATE TABLE `programs` (
   `commission_value` decimal(10,2) NOT NULL,
   `cookie_days` int unsigned DEFAULT '30',
   `is_recurring` tinyint(1) DEFAULT '0',
-  `reward_days` int unsigned DEFAULT '0',
+  `reward_days` int unsigned DEFAULT '7',
   `landing_page` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `status` enum('active','inactive') COLLATE utf8mb4_unicode_ci DEFAULT 'active',
   `is_private` tinyint(1) NOT NULL DEFAULT '0',

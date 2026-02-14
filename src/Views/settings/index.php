@@ -256,6 +256,56 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Payout Settings -->
+                <div class="bg-white shadow sm:rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <h3 class="text-base font-semibold leading-6 text-gray-900">Payout Settings</h3>
+                        <div class="mt-4 max-w-xl">
+                            <form action="/admin/settings/update" method="POST">
+                                <?php
+                                $enabledPayoutMethods = array_filter(array_map('trim', explode(',', (string)($settings['enabled_payout_methods'] ?? 'stripe_customer_balance'))));
+                                ?>
+                                <div class="mb-4">
+                                    <p class="block text-sm font-medium text-gray-700">Enabled Payout Methods</p>
+                                    <input type="hidden" name="enabled_payout_methods[]" value="">
+                                    <div class="mt-2 space-y-2">
+                                        <label class="inline-flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                name="enabled_payout_methods[]"
+                                                value="stripe_customer_balance"
+                                                id="enabled_payout_method_stripe_customer_balance"
+                                                <?= in_array('stripe_customer_balance', $enabledPayoutMethods, true) ? 'checked' : '' ?>
+                                                class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                            <span class="text-sm text-gray-700">Stripe Customer Balance</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="mb-4" id="stripe_min_payout_container">
+                                    <label for="min_payout_amount_stripe_customer_balance" class="block text-sm font-medium text-gray-700">Minimum Payout Amount (Stripe Customer Balance)</label>
+                                    <input
+                                        type="number"
+                                        name="min_payout_amount_stripe_customer_balance"
+                                        id="min_payout_amount_stripe_customer_balance"
+                                        min="0"
+                                        step="0.01"
+                                        value="<?= htmlspecialchars($settings['min_payout_amount_stripe_customer_balance'] ?? $settings['min_payout_amount'] ?? '0.00') ?>"
+                                        class="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
+                                    <p class="mt-2 text-sm text-gray-500">Payouts are blocked until payable balance reaches this amount. Manual payouts are not blocked by this minimum.</p>
+                                </div>
+
+                                <div class="mt-6">
+                                    <button type="submit" 
+                                            class="inline-flex justify-center rounded-md bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                                        Save Payout Settings
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Documentation Sidebar -->
@@ -312,4 +362,20 @@ function resetBranding() {
         form.submit();
     }
 }
+
+document.addEventListener('DOMContentLoaded', function () {
+    const stripeToggle = document.getElementById('enabled_payout_method_stripe_customer_balance');
+    const stripeMinContainer = document.getElementById('stripe_min_payout_container');
+
+    if (!stripeToggle || !stripeMinContainer) {
+        return;
+    }
+
+    const syncStripeMinVisibility = function () {
+        stripeMinContainer.classList.toggle('hidden', !stripeToggle.checked);
+    };
+
+    stripeToggle.addEventListener('change', syncStripeMinVisibility);
+    syncStripeMinVisibility();
+});
 </script>

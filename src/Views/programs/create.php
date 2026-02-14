@@ -155,10 +155,10 @@ By participating in the Program, you acknowledge and agree to these terms.</text
                             <label for="reward_days" class="block text-sm font-medium leading-6 text-gray-900">Reward Delay (days)</label>
                             <div class="mt-2">
                                 <input type="number" name="reward_days" id="reward_days" min="0"
-                                       value="<?= htmlspecialchars($program['reward_days'] ?? '0') ?>"
+                                       value="<?= htmlspecialchars($program['reward_days'] ?? '7') ?>"
                                        class="block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
                             </div>
-                            <p class="mt-3 text-sm leading-6 text-gray-600">Days to wait before marking commission as payable.</p>
+                            <p class="mt-3 text-sm leading-6 text-gray-600">Days to wait before automatically marking commission as payable.</p>
                         </div>
 
                         <div class="col-span-full">
