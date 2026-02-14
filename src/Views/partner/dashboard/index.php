@@ -334,7 +334,7 @@
                                             </span>
                                         </div>
                                         <div class="ml-3">
-                                            <p class="text-sm font-medium text-gray-900"><?= htmlspecialchars($program['program_name']) ?></p>
+                                            <p class="text-sm font-medium text-gray-900 max-w-[180px] truncate" title="<?= htmlspecialchars($program['program_name']) ?>"><?= htmlspecialchars($program['program_name']) ?></p>
                                             <p class="text-sm text-gray-500"><?= number_format($program['total_conversions']) ?> conversions</p>
                                         </div>
                                     </div>
@@ -397,16 +397,15 @@
                                                 endswitch; ?>
                                             </div>
                                             <div class="min-w-0 flex-1 pt-1.5 flex justify-between space-x-4">
-                                                <div>
+                                                <div class="min-w-0">
                                                     <p class="text-sm text-gray-500">
-                                                        <?php switch($activity['type']):
-                                                            case 'conversion':
-                                                                echo 'Earned <span class="font-medium text-green-600">$' . number_format($activity['commission_amount'], 2) . '</span> from <span class="font-medium text-gray-900">' . htmlspecialchars($activity['program_name']) . '</span>';
-                                                                break;
-                                                            case 'program_join':
-                                                                echo 'Joined program <span class="font-medium text-gray-900">' . htmlspecialchars($activity['program_name']) . '</span>';
-                                                                break;
-                                                        endswitch; ?>
+                                                        <?php if ($activity['type'] === 'conversion'): ?>
+                                                            Earned <span class="font-medium text-green-600">$<?= number_format($activity['commission_amount'], 2) ?></span> from
+                                                            <span class="inline-block max-w-[260px] truncate align-bottom font-medium text-gray-900" title="<?= htmlspecialchars($activity['program_name']) ?>"><?= htmlspecialchars($activity['program_name']) ?></span>
+                                                        <?php elseif ($activity['type'] === 'program_join'): ?>
+                                                            Joined program
+                                                            <span class="inline-block max-w-[260px] truncate align-bottom font-medium text-gray-900" title="<?= htmlspecialchars($activity['program_name']) ?>"><?= htmlspecialchars($activity['program_name']) ?></span>
+                                                        <?php endif; ?>
                                                     </p>
                                                 </div>
                                                 <div class="text-right text-sm whitespace-nowrap text-gray-500">

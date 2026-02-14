@@ -160,7 +160,7 @@
                                         <tr>
                                             <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-gray-900">
                                                 <div>
-                                                    <div class="font-medium"><?= htmlspecialchars($program['program_name']) ?></div>
+                                                    <div class="font-medium max-w-[220px] truncate" title="<?= htmlspecialchars($program['program_name']) ?>"><?= htmlspecialchars($program['program_name']) ?></div>
                                                     <div class="text-gray-500">
                                                         <?php if ($program['commission_type'] === 'percentage'): ?>
                                                             <?= number_format($program['commission_value'], 1) ?>%

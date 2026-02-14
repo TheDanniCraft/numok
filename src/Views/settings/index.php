@@ -264,7 +264,7 @@
                         <div class="mt-4 max-w-xl">
                             <form action="/admin/settings/update" method="POST">
                                 <?php
-                                $enabledPayoutMethods = array_filter(array_map('trim', explode(',', (string)($settings['enabled_payout_methods'] ?? 'stripe_customer_balance'))));
+                                $enabledPayoutMethods = array_filter(array_map('trim', explode(',', (string)($settings['enabled_payout_methods'] ?? ''))));
                                 ?>
                                 <div class="mb-4">
                                     <p class="block text-sm font-medium text-gray-700">Enabled Payout Methods</p>

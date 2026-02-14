@@ -5,7 +5,7 @@ $minPayoutAmount = isset($settings['min_payout_amount_stripe_customer_balance'])
     : ((isset($settings['min_payout_amount']) && is_numeric($settings['min_payout_amount']))
         ? max(0.0, (float) $settings['min_payout_amount'])
         : 0.0);
-$enabledPayoutMethods = array_filter(array_map('trim', explode(',', (string)($settings['enabled_payout_methods'] ?? 'stripe_customer_balance'))));
+$enabledPayoutMethods = array_filter(array_map('trim', explode(',', (string)($settings['enabled_payout_methods'] ?? ''))));
 $stripePayoutEnabled = in_array('stripe_customer_balance', $enabledPayoutMethods, true);
 ?>
 <div class="py-6">
@@ -189,14 +189,14 @@ $stripePayoutEnabled = in_array('stripe_customer_balance', $enabledPayoutMethods
             <!-- Left Column - Chart -->
             <div class="lg:col-span-2">
                 <!-- Monthly Earnings Chart -->
-                <div class="bg-white shadow rounded-lg">
-                    <div class="px-4 py-5 sm:p-6">
+                <div class="bg-white shadow rounded-lg h-full">
+                    <div class="px-4 py-5 sm:p-6 h-full flex flex-col">
                         <h3 class="text-base font-semibold leading-6 text-gray-900">Monthly Earnings Trend</h3>
                         <p class="mt-2 text-sm text-gray-700">Your commission earnings over time</p>
                         
                         <?php if (!empty($monthly_earnings)): ?>
                         <div class="mt-6">
-                            <div class="relative h-64">
+                            <div class="relative min-h-[320px] lg:h-full">
                                 <canvas id="earningsChart" class="w-full h-full"></canvas>
                             </div>
                         </div>
@@ -258,35 +258,20 @@ $stripePayoutEnabled = in_array('stripe_customer_balance', $enabledPayoutMethods
             </div>
 
             <!-- Right Column - Status Breakdown -->
-            <div>
+            <div class="space-y-8">
                 <div class="bg-white shadow rounded-lg">
                     <div class="px-4 py-5 sm:p-6">
-                        <h3 class="text-base font-semibold leading-6 text-gray-900">Commission Status</h3>
-                        <p class="mt-2 text-sm text-gray-700">Breakdown by payment status</p>
+                        <h3 class="text-base font-semibold leading-6 text-gray-900">Available Payout Balance</h3>
+                        <p class="mt-2 text-sm text-gray-700">Live balance currently available for payout.</p>
                         
                         <div class="mt-6 space-y-4">
-                            <!-- Pending -->
                             <div class="flex items-center justify-between">
-                                <div class="flex items-center">
-                                    <div class="h-3 w-3 rounded-full bg-yellow-400"></div>
-                                    <span class="ml-3 text-sm font-medium text-gray-900">Pending</span>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-sm font-medium text-gray-900">$<?= number_format($summary['pending_amount'], 2) ?></div>
-                                    <div class="text-xs text-gray-500"><?= number_format($summary['pending_count']) ?> conversions</div>
-                                </div>
+                                <span class="text-sm font-medium text-gray-900">Available Balance</span>
+                                <span class="text-sm font-semibold text-gray-900">$<?= number_format((float) ($payout_summary['payable_amount'] ?? 0), 2) ?></span>
                             </div>
-
-                            <!-- Payable -->
                             <div class="flex items-center justify-between">
-                                <div class="flex items-center">
-                                    <div class="h-3 w-3 rounded-full bg-green-400"></div>
-                                    <span class="ml-3 text-sm font-medium text-gray-900">Payable</span>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-sm font-medium text-gray-900">$<?= number_format($summary['payable_amount'], 2) ?></div>
-                                    <div class="text-xs text-gray-500"><?= number_format($summary['payable_count']) ?> conversions</div>
-                                </div>
+                                <span class="text-sm font-medium text-gray-900">Payable Conversions</span>
+                                <span class="text-sm text-gray-600"><?= number_format((int) ($payout_summary['payable_count'] ?? 0)) ?></span>
                             </div>
 
                             <div>
@@ -297,14 +282,14 @@ $stripePayoutEnabled = in_array('stripe_customer_balance', $enabledPayoutMethods
                                         class="w-full inline-flex justify-center items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-400 cursor-not-allowed">
                                         Payouts disabled
                                     </button>
-                                <?php elseif ($summary['payable_amount'] > 0 && $summary['payable_amount'] < $minPayoutAmount): ?>
+                                <?php elseif (($payout_summary['payable_amount'] ?? 0) > 0 && ($payout_summary['payable_amount'] ?? 0) < $minPayoutAmount): ?>
                                     <button
                                         type="button"
                                         disabled
                                         class="w-full inline-flex justify-center items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-400 cursor-not-allowed">
                                         Min payout: $<?= number_format($minPayoutAmount, 2) ?>
                                     </button>
-                                <?php elseif ($summary['payable_amount'] > 0 && !empty($payout_account['is_linked'])): ?>
+                                <?php elseif (($payout_summary['payable_amount'] ?? 0) > 0 && !empty($payout_account['is_linked'])): ?>
                                     <form method="POST" action="/payout/request" id="payoutForm">
                                         <input type="hidden" id="payout_source_input" name="payout_source" value="stripe_customer_balance">
                                         <button
@@ -335,6 +320,39 @@ $stripePayoutEnabled = in_array('stripe_customer_balance', $enabledPayoutMethods
                                         No Payable Balance
                                     </button>
                                 <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <h3 class="text-base font-semibold leading-6 text-gray-900">Commission Status</h3>
+                        <p class="mt-2 text-sm text-gray-700">Breakdown by payment status</p>
+
+                        <div class="mt-6 space-y-4">
+                            <!-- Pending -->
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <div class="h-3 w-3 rounded-full bg-yellow-400"></div>
+                                    <span class="ml-3 text-sm font-medium text-gray-900">Pending</span>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-sm font-medium text-gray-900">$<?= number_format($summary['pending_amount'], 2) ?></div>
+                                    <div class="text-xs text-gray-500"><?= number_format($summary['pending_count']) ?> conversions</div>
+                                </div>
+                            </div>
+
+                            <!-- Payable -->
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <div class="h-3 w-3 rounded-full bg-green-400"></div>
+                                    <span class="ml-3 text-sm font-medium text-gray-900">Payable</span>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-sm font-medium text-gray-900">$<?= number_format($summary['payable_amount'], 2) ?></div>
+                                    <div class="text-xs text-gray-500"><?= number_format($summary['payable_count']) ?> conversions</div>
+                                </div>
                             </div>
 
                             <!-- Paid -->
@@ -388,8 +406,10 @@ $stripePayoutEnabled = in_array('stripe_customer_balance', $enabledPayoutMethods
                                             <?= date('M j, Y', strtotime($conversion['created_at'])) ?>
                                             <div class="text-xs text-gray-500"><?= date('g:i A', strtotime($conversion['created_at'])) ?></div>
                                         </td>
-                                        <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                                            <?= htmlspecialchars($conversion['program_name']) ?>
+                                        <td class="px-3 py-4 text-sm text-gray-900">
+                                            <div class="max-w-[220px] truncate" title="<?= htmlspecialchars($conversion['program_name']) ?>">
+                                                <?= htmlspecialchars($conversion['program_name']) ?>
+                                            </div>
                                         </td>
                                         <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                                             $<?= number_format($conversion['amount'], 2) ?>
@@ -509,10 +529,27 @@ $stripePayoutEnabled = in_array('stripe_customer_balance', $enabledPayoutMethods
                 </div>
                 <p class="mt-2 text-sm text-gray-600">
                     Are you sure you want to payout your available balance of
-                    <span class="font-semibold text-gray-900">$<?= number_format($summary['payable_amount'], 2) ?></span>
+                    <span class="font-semibold text-gray-900">$<?= number_format((float) ($payout_summary['payable_amount'] ?? 0), 2) ?></span>
                     using
                     <span id="payoutSourceLabel" class="font-semibold text-gray-900">Stripe Customer Balance</span>?
                 </p>
+                <?php
+                $payableCount = (int) ($payout_summary['payable_count'] ?? 0);
+                $previewIds = $payout_summary['payable_preview_ids'] ?? [];
+                ?>
+                <?php if ($payableCount > 0): ?>
+                    <div class="mt-2 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                        <div>
+                            Paying out <?= number_format($payableCount) ?> conversion<?= $payableCount === 1 ? '' : 's' ?>.
+                        </div>
+                        <?php if (!empty($previewIds)): ?>
+                            <div class="mt-1">
+                                Conversion IDs:
+                                <?= implode(', ', array_map(static fn(int $id): string => '#' . $id, $previewIds)) ?><?= $payableCount > count($previewIds) ? ', ...' : '' ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
                 <p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
                     Payouts cannot be withdrawn or reversed after confirmation.
                 </p>
@@ -585,3 +622,4 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 </script>
+

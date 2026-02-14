@@ -1,6 +1,6 @@
 <div class="py-6">
     <?php
-    $enabledPayoutMethods = array_filter(array_map('trim', explode(',', (string)($settings['enabled_payout_methods'] ?? 'stripe_customer_balance'))));
+    $enabledPayoutMethods = array_filter(array_map('trim', explode(',', (string)($settings['enabled_payout_methods'] ?? ''))));
     $adminStripeEnabled = in_array('stripe_customer_balance', $enabledPayoutMethods, true);
     ?>
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -125,8 +125,117 @@
                 <p class="mt-1 text-sm text-gray-500">No conversions match your current filters.</p>
             </div>
         <?php else: ?>
-            <div class="mt-8 flow-root">
-                <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+            <div class="mt-8 space-y-3 lg:hidden">
+                <?php foreach ($conversions as $conversion): ?>
+                    <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-semibold text-gray-900"><?= htmlspecialchars($conversion['partner_name'] ?? '') ?></div>
+                                <div class="text-xs text-gray-500"><?= date('M j, Y g:i A', strtotime($conversion['created_at'] ?? '')) ?></div>
+                            </div>
+                            <span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium <?php
+                                                                                                            switch ($conversion['status']):
+                                                                                                                case 'pending':
+                                                                                                                    echo 'bg-yellow-50 text-yellow-800';
+                                                                                                                    break;
+                                                                                                                case 'payable':
+                                                                                                                    echo 'bg-green-50 text-green-800';
+                                                                                                                    break;
+                                                                                                                case 'paid':
+                                                                                                                    echo 'bg-blue-50 text-blue-800';
+                                                                                                                    break;
+                                                                                                                case 'rejected':
+                                                                                                                    echo 'bg-red-50 text-red-800';
+                                                                                                                    break;
+                                                                                                                default:
+                                                                                                                    echo 'bg-gray-100 text-gray-800';
+                                                                                                            endswitch; ?>">
+                                <?= ucfirst(htmlspecialchars($conversion['status'])) ?>
+                            </span>
+                        </div>
+
+                        <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
+                            <div class="text-gray-500">Program</div>
+                            <div class="text-right text-gray-900 truncate" title="<?= htmlspecialchars($conversion['program_name'] ?? '') ?>"><?= htmlspecialchars($conversion['program_name'] ?? '') ?></div>
+                            <div class="text-gray-500">Customer</div>
+                            <div class="text-right text-gray-900 truncate" title="<?= htmlspecialchars($conversion['customer_email'] ?? '') ?>"><?= htmlspecialchars($conversion['customer_email'] ?? '') ?></div>
+                            <div class="text-gray-500">Amount</div>
+                            <div class="text-right text-gray-900">$<?= number_format($conversion['amount'] ?? 0, 2) ?></div>
+                            <div class="text-gray-500">Commission</div>
+                            <div class="text-right text-gray-900">$<?= number_format($conversion['commission_amount'] ?? 0, 2) ?></div>
+                        </div>
+
+                        <?php if ($conversion['status'] === 'pending' || $conversion['status'] === 'payable'): ?>
+                            <div class="mt-4 flex items-center justify-end gap-2">
+                                <?php if ($conversion['status'] === 'pending'): ?>
+                                    <form method="POST" action="/admin/conversions/update-status" class="inline-block">
+                                        <input type="hidden" name="id" value="<?= $conversion['id'] ?>">
+                                        <input type="hidden" name="status" value="payable">
+                                        <button type="submit"
+                                            title="Mark payable"
+                                            aria-label="Mark payable"
+                                            class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-green-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-green-50">
+                                            <svg class="mr-1.5 h-4 w-4 text-green-500" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                            </svg>
+                                            Mark as Payable
+                                        </button>
+                                    </form>
+
+                                    <form method="POST" action="/admin/conversions/update-status" class="inline-block">
+                                        <input type="hidden" name="id" value="<?= $conversion['id'] ?>">
+                                        <input type="hidden" name="status" value="rejected">
+                                        <button type="submit"
+                                            title="Reject"
+                                            aria-label="Reject"
+                                            class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-red-50">
+                                            <svg class="mr-1.5 h-4 w-4 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
+                                            </svg>
+                                            Reject
+                                        </button>
+                                    </form>
+                                <?php endif; ?>
+
+                                <?php if ($conversion['status'] === 'payable'): ?>
+                                    <button
+                                        type="button"
+                                        class="open-payout-modal inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-blue-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-blue-50"
+                                        data-conversion-id="<?= (int) $conversion['id'] ?>"
+                                        data-has-stripe="<?= !empty($conversion['stripe_customer_id']) ? '1' : '0' ?>"
+                                        data-partner-name="<?= htmlspecialchars($conversion['partner_name'] ?? '', ENT_QUOTES) ?>"
+                                        data-commission="<?= number_format((float) ($conversion['commission_amount'] ?? 0), 2, '.', '') ?>">
+                                        Review Payout
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+
+            <div class="mt-8 flow-root hidden lg:block">
+                <div class="mb-2 flex items-center gap-2 text-xs text-gray-500">
+                    <span>Available Actions:</span>
+                    <span class="inline-flex items-center gap-1">
+                        <svg class="h-3.5 w-3.5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                        </svg>
+                        Mark as Payable
+                    </span>
+                    <span class="inline-flex items-center gap-1">
+                        <svg class="h-3.5 w-3.5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
+                        </svg>
+                        Reject
+                    </span>
+                    <span class="inline-flex items-center gap-1">
+                        <svg class="h-3.5 w-3.5 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clip-rule="evenodd" />
+                        </svg>
+                        Review Payout
+                    </span>
+                </div>
                     <div class="inline-block min-w-full py-2 align-middle">
                         <table class="min-w-full divide-y divide-gray-300">
                             <thead>
@@ -139,8 +248,8 @@
                                     <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Commission</th>
                                     <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Status</th>
                                     <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Payout</th>
-                                    <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6">
-                                        <span class="sr-only">Actions</span>
+                                    <th scope="col" class="py-3.5 pl-3 pr-4 text-right text-sm font-semibold text-gray-900 sm:pr-6">
+                                        Actions
                                     </th>
                                 </tr>
                             </thead>
@@ -155,11 +264,15 @@
                                             <div class="font-medium text-gray-900"><?= htmlspecialchars($conversion['partner_name'] ?? '') ?></div>
                                             <div class="text-gray-500 font-mono text-xs"><?= htmlspecialchars($conversion['tracking_code'] ?? '') ?></div>
                                         </td>
-                                        <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                                            <?= htmlspecialchars($conversion['program_name'] ?? '') ?>
+                                        <td class="px-3 py-4 text-sm text-gray-500 max-w-[200px]">
+                                            <div class="truncate" title="<?= htmlspecialchars($conversion['program_name'] ?? '') ?>">
+                                                <?= htmlspecialchars($conversion['program_name'] ?? '') ?>
+                                            </div>
                                         </td>
-                                        <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                                            <?= htmlspecialchars($conversion['customer_email'] ?? '') ?>
+                                        <td class="px-3 py-4 text-sm text-gray-500 max-w-[220px]">
+                                            <div class="truncate" title="<?= htmlspecialchars($conversion['customer_email'] ?? '') ?>">
+                                                <?= htmlspecialchars($conversion['customer_email'] ?? '') ?>
+                                            </div>
                                         </td>
                                         <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                                             $<?= number_format($conversion['amount'] ?? 0, 2) ?>
@@ -188,7 +301,7 @@
                                                 <?= ucfirst(htmlspecialchars($conversion['status'])) ?>
                                             </span>
                                         </td>
-                                        <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                                        <td class="px-3 py-4 text-sm text-gray-500 max-w-[220px]">
                                             <?php if (!empty($conversion['payout_method'])): ?>
                                                 <?php if ($conversion['payout_method'] === 'stripe_customer_balance'): ?>
                                                     <span class="inline-flex items-center rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700">
@@ -204,7 +317,7 @@
                                                     </span>
                                                 <?php endif; ?>
                                                 <?php if (!empty($conversion['stripe_customer_balance_transaction_id'])): ?>
-                                                    <div class="text-xs font-mono mt-1 text-gray-400">
+                                                    <div class="text-xs font-mono mt-1 text-gray-400 break-all">
                                                         <?= htmlspecialchars($conversion['stripe_customer_balance_transaction_id']) ?>
                                                     </div>
                                                 <?php endif; ?>
@@ -213,18 +326,20 @@
                                             <?php endif; ?>
                                         </td>
                                         <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-sm font-medium sm:pr-6">
-                                            <div class="flex items-center justify-end space-x-2">
+                                            <div class="flex items-center justify-end gap-1.5">
                                                 <?php if ($conversion['status'] === 'pending'): ?>
                                                     <!-- Mark as Payable -->
                                                     <form method="POST" action="/admin/conversions/update-status" class="inline-block">
                                                         <input type="hidden" name="id" value="<?= $conversion['id'] ?>">
                                                         <input type="hidden" name="status" value="payable">
                                                         <button type="submit"
-                                                            class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-green-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-green-50">
-                                                            <svg class="mr-1.5 h-4 w-4 text-green-500" viewBox="0 0 20 20" fill="currentColor">
+                                                            title="Mark payable"
+                                                            aria-label="Mark payable"
+                                                            class="inline-flex items-center justify-center rounded-md bg-white p-2 text-green-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-green-50">
+                                                            <svg class="h-4 w-4 text-green-500" viewBox="0 0 20 20" fill="currentColor">
                                                                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
                                                             </svg>
-                                                            Mark Payable
+                                                            <span class="sr-only">Mark as Payable</span>
                                                         </button>
                                                     </form>
 
@@ -233,11 +348,13 @@
                                                         <input type="hidden" name="id" value="<?= $conversion['id'] ?>">
                                                         <input type="hidden" name="status" value="rejected">
                                                         <button type="submit"
-                                                            class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-red-50">
-                                                            <svg class="mr-1.5 h-4 w-4 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                                                            title="Reject"
+                                                            aria-label="Reject"
+                                                            class="inline-flex items-center justify-center rounded-md bg-white p-2 text-red-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-red-50">
+                                                            <svg class="h-4 w-4 text-red-500" viewBox="0 0 20 20" fill="currentColor">
                                                                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
                                                             </svg>
-                                                            Reject
+                                                            <span class="sr-only">Reject</span>
                                                         </button>
                                                     </form>
                                                 <?php endif; ?>
@@ -245,26 +362,19 @@
                                                 <?php if ($conversion['status'] === 'payable'): ?>
                                                     <button
                                                         type="button"
-                                                        class="open-payout-modal inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-blue-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-blue-50"
+                                                        title="Review payout"
+                                                        aria-label="Review payout"
+                                                        class="open-payout-modal inline-flex items-center justify-center rounded-md bg-white p-2 text-blue-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-blue-50"
                                                         data-conversion-id="<?= (int) $conversion['id'] ?>"
                                                         data-has-stripe="<?= !empty($conversion['stripe_customer_id']) ? '1' : '0' ?>"
                                                         data-partner-name="<?= htmlspecialchars($conversion['partner_name'] ?? '', ENT_QUOTES) ?>"
                                                         data-commission="<?= number_format((float) ($conversion['commission_amount'] ?? 0), 2, '.', '') ?>">
-                                                        <svg class="mr-1.5 h-4 w-4 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+                                                        <svg class="h-4 w-4 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
                                                             <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clip-rule="evenodd" />
                                                         </svg>
-                                                        Review Payout
+                                                        <span class="sr-only">Review Payout</span>
                                                     </button>
                                                 <?php endif; ?>
-
-                                                <!-- View Details button (if needed in the future) -->
-                                                <!-- <a href="#" class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
-                                                    <svg class="mr-1.5 h-4 w-4 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
-                                                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                                                        <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
-                                                    </svg>
-                                                    View Details
-                                                </a> -->
                                             </div>
                                         </td>
                                     </tr>
