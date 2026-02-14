@@ -1,5 +1,12 @@
 <?php
 // File: src/Views/partner/earnings/index.php
+$minPayoutAmount = isset($settings['min_payout_amount_stripe_customer_balance']) && is_numeric($settings['min_payout_amount_stripe_customer_balance'])
+    ? max(0.0, (float) $settings['min_payout_amount_stripe_customer_balance'])
+    : ((isset($settings['min_payout_amount']) && is_numeric($settings['min_payout_amount']))
+        ? max(0.0, (float) $settings['min_payout_amount'])
+        : 0.0);
+$enabledPayoutMethods = array_filter(array_map('trim', explode(',', (string)($settings['enabled_payout_methods'] ?? 'stripe_customer_balance'))));
+$stripePayoutEnabled = in_array('stripe_customer_balance', $enabledPayoutMethods, true);
 ?>
 <div class="py-6">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -22,6 +29,38 @@
                 </a>
             </div>
         </div>
+
+        <?php if (isset($_SESSION['earnings_success'])): ?>
+            <div class="rounded-md bg-green-50 p-4 mt-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-green-800"><?= htmlspecialchars($_SESSION['earnings_success']) ?></p>
+                    </div>
+                </div>
+            </div>
+            <?php unset($_SESSION['earnings_success']); ?>
+        <?php endif; ?>
+
+        <?php if (isset($_SESSION['earnings_error'])): ?>
+            <div class="rounded-md bg-red-50 p-4 mt-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-red-800"><?= htmlspecialchars($_SESSION['earnings_error']) ?></p>
+                    </div>
+                </div>
+            </div>
+            <?php unset($_SESSION['earnings_error']); ?>
+        <?php endif; ?>
 
         <!-- Filters -->
         <div class="mt-8 bg-white shadow rounded-lg">
@@ -250,6 +289,54 @@
                                 </div>
                             </div>
 
+                            <div>
+                                <?php if (!$stripePayoutEnabled): ?>
+                                    <button
+                                        type="button"
+                                        disabled
+                                        class="w-full inline-flex justify-center items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-400 cursor-not-allowed">
+                                        Payouts disabled
+                                    </button>
+                                <?php elseif ($summary['payable_amount'] > 0 && $summary['payable_amount'] < $minPayoutAmount): ?>
+                                    <button
+                                        type="button"
+                                        disabled
+                                        class="w-full inline-flex justify-center items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-400 cursor-not-allowed">
+                                        Min payout: $<?= number_format($minPayoutAmount, 2) ?>
+                                    </button>
+                                <?php elseif ($summary['payable_amount'] > 0 && !empty($payout_account['is_linked'])): ?>
+                                    <form method="POST" action="/payout/request" id="payoutForm">
+                                        <input type="hidden" id="payout_source_input" name="payout_source" value="stripe_customer_balance">
+                                        <button
+                                            type="button"
+                                            id="openPayoutConfirm"
+                                            class="w-full inline-flex justify-center items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                                            Payout Available Balance
+                                        </button>
+                                    </form>
+                                <?php elseif (empty($payout_account['is_linked'])): ?>
+                                    <a
+                                        href="/settings"
+                                        class="w-full inline-flex justify-center items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-200">
+                                        Link Stripe Customer Account
+                                    </a>
+                                <?php elseif ($minPayoutAmount > 0): ?>
+                                    <button
+                                        type="button"
+                                        disabled
+                                        class="w-full inline-flex justify-center items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-400 cursor-not-allowed">
+                                        Min payout: $<?= number_format($minPayoutAmount, 2) ?>
+                                    </button>
+                                <?php else: ?>
+                                    <button
+                                        type="button"
+                                        disabled
+                                        class="w-full inline-flex justify-center items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-400 cursor-not-allowed">
+                                        No Payable Balance
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+
                             <!-- Paid -->
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center">
@@ -402,5 +489,99 @@
     </div>
 </div>
 
+<div id="payoutConfirmModal" class="fixed inset-0 z-50 hidden">
+    <div id="payoutConfirmBackdrop" class="absolute inset-0 bg-gray-900/60"></div>
+    <div class="absolute inset-0 flex items-center justify-center px-4">
+        <div class="w-full max-w-md rounded-lg bg-white shadow-xl">
+            <div class="px-6 py-5">
+                <h3 class="text-lg font-semibold text-gray-900">Confirm Payout</h3>
+                <div class="mt-3">
+                    <label for="payout_source_modal" class="block text-sm font-medium text-gray-700 mb-1">
+                        Payment Source
+                    </label>
+                    <select
+                        id="payout_source_modal"
+                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        <?php if ($stripePayoutEnabled): ?>
+                            <option value="stripe_customer_balance">Stripe Customer Balance</option>
+                        <?php endif; ?>
+                    </select>
+                </div>
+                <p class="mt-2 text-sm text-gray-600">
+                    Are you sure you want to payout your available balance of
+                    <span class="font-semibold text-gray-900">$<?= number_format($summary['payable_amount'], 2) ?></span>
+                    using
+                    <span id="payoutSourceLabel" class="font-semibold text-gray-900">Stripe Customer Balance</span>?
+                </p>
+                <p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                    Payouts cannot be withdrawn or reversed after confirmation.
+                </p>
+            </div>
+            <div class="flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
+                <button
+                    type="button"
+                    id="cancelPayoutConfirm"
+                    class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                    Cancel
+                </button>
+                <button
+                    type="button"
+                    id="submitPayoutConfirm"
+                    class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                    Yes, payout now
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Chart.js CDN -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const openBtn = document.getElementById('openPayoutConfirm');
+    const modal = document.getElementById('payoutConfirmModal');
+    const cancelBtn = document.getElementById('cancelPayoutConfirm');
+    const submitBtn = document.getElementById('submitPayoutConfirm');
+    const backdrop = document.getElementById('payoutConfirmBackdrop');
+    const payoutForm = document.getElementById('payoutForm');
+    const payoutSourceSelect = document.getElementById('payout_source_modal');
+    const payoutSourceInput = document.getElementById('payout_source_input');
+    const payoutSourceLabel = document.getElementById('payoutSourceLabel');
+
+    if (!openBtn || !modal || !cancelBtn || !submitBtn || !backdrop || !payoutForm) {
+        return;
+    }
+
+    const openModal = function () {
+        if (payoutSourceSelect && payoutSourceLabel) {
+            const selectedText = payoutSourceSelect.options[payoutSourceSelect.selectedIndex]?.text || 'Selected Source';
+            payoutSourceLabel.textContent = selectedText;
+        }
+        modal.classList.remove('hidden');
+    };
+
+    const closeModal = function () {
+        modal.classList.add('hidden');
+    };
+
+    openBtn.addEventListener('click', openModal);
+    cancelBtn.addEventListener('click', closeModal);
+    backdrop.addEventListener('click', closeModal);
+
+    submitBtn.addEventListener('click', function () {
+        if (payoutSourceInput && payoutSourceSelect) {
+            payoutSourceInput.value = payoutSourceSelect.value;
+        }
+        submitBtn.disabled = true;
+        submitBtn.classList.add('opacity-70', 'cursor-not-allowed');
+        payoutForm.submit();
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+            closeModal();
+        }
+    });
+});
+</script>

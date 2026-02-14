@@ -11,6 +11,8 @@ class DashboardController extends Controller {
     }
 
     public function index(): void {
+        $this->promoteMaturePendingConversions();
+
         // Get comprehensive stats
         $stats = $this->getStats();
         

@@ -11,6 +11,8 @@ class ConversionsController extends Controller {
     }
 
     public function index(): void {
+        $this->promoteMaturePendingConversions();
+
         // Get filter parameters
         $status = $_GET['status'] ?? 'all';
         $partnerId = intval($_GET['partner_id'] ?? 0);
@@ -53,12 +55,16 @@ class ConversionsController extends Controller {
         $conversions = Database::query(
             "SELECT c.*, 
                     p.company_name as partner_name,
+                    p.stripe_customer_id,
                     prog.name as program_name,
-                    pp.tracking_code
+                    pp.tracking_code,
+                    po.payout_method,
+                    po.stripe_customer_balance_transaction_id
              FROM conversions c
              JOIN partner_programs pp ON c.partner_program_id = pp.id
              JOIN partners p ON pp.partner_id = p.id
              JOIN programs prog ON pp.program_id = prog.id
+             LEFT JOIN payouts po ON c.payout_id = po.id
              {$whereClause}
              ORDER BY c.created_at DESC
              LIMIT 100",
@@ -105,8 +111,11 @@ class ConversionsController extends Controller {
             exit;
         }
 
+        $this->promoteMaturePendingConversions();
+
         $id = intval($_POST['id'] ?? 0);
         $status = $_POST['status'] ?? '';
+        $payoutSource = $_POST['payout_source'] ?? null;
 
         if (!$id || !in_array($status, ['pending', 'payable', 'rejected', 'paid'])) {
             $_SESSION['error'] = 'Invalid request parameters';
@@ -115,16 +124,21 @@ class ConversionsController extends Controller {
         }
 
         try {
-            Database::update(
-                'conversions',
-                ['status' => $status],
-                'id = ?',
-                [$id]
-            );
+            if ($status === 'paid') {
+                $this->handlePaidStatusUpdate($id, $payoutSource);
+            } else {
+                Database::update(
+                    'conversions',
+                    ['status' => $status],
+                    'id = ?',
+                    [$id]
+                );
+            }
 
             $_SESSION['success'] = 'Conversion status updated successfully.';
         } catch (\Exception $e) {
-            $_SESSION['error'] = 'Failed to update conversion status.';
+            error_log('Failed to update conversion status: ' . $e->getMessage());
+            $_SESSION['error'] = 'Failed to update conversion status: ' . $e->getMessage();
         }
 
         header('Location: /admin/conversions');
@@ -185,5 +199,155 @@ class ConversionsController extends Controller {
 
         fclose($output);
         exit;
+    }
+
+    private function handlePaidStatusUpdate(int $conversionId, ?string $payoutSource = null): void {
+        $conversion = Database::query(
+            "SELECT
+                c.id,
+                c.status,
+                c.commission_amount,
+                pp.partner_id,
+                p.stripe_customer_id
+             FROM conversions c
+             JOIN partner_programs pp ON c.partner_program_id = pp.id
+             JOIN partners p ON pp.partner_id = p.id
+             WHERE c.id = ?
+             LIMIT 1",
+            [$conversionId]
+        )->fetch();
+
+        if (!$conversion) {
+            throw new \RuntimeException('Conversion not found.');
+        }
+
+        if ($conversion['status'] !== 'payable') {
+            throw new \RuntimeException('Only payable conversions can be marked as paid.');
+        }
+
+        $commissionAmount = (float) $conversion['commission_amount'];
+        if ($commissionAmount <= 0) {
+            throw new \RuntimeException('Conversion commission must be greater than zero.');
+        }
+
+        $allowedSources = $this->getEnabledPayoutMethods();
+        $requestedSource = is_string($payoutSource) ? trim($payoutSource) : '';
+        if ($requestedSource !== '' && !in_array($requestedSource, $allowedSources, true)) {
+            throw new \RuntimeException('Invalid payout source selected.');
+        }
+
+        $stripeCustomerId = $conversion['stripe_customer_id'] ?? null;
+        $resolvedSource = $requestedSource !== ''
+            ? $requestedSource
+            : (!empty($stripeCustomerId) ? 'stripe_customer_balance' : 'manual');
+
+        if ($resolvedSource === 'manual') {
+            Database::transaction(function () use ($conversion, $commissionAmount, $conversionId) {
+                $payoutId = Database::insert('payouts', [
+                    'partner_id' => (int) $conversion['partner_id'],
+                    'stripe_transfer_id' => null,
+                    'stripe_customer_balance_transaction_id' => null,
+                    'payout_method' => 'manual',
+                    'amount' => $commissionAmount,
+                    'fee_amount' => 0.00,
+                    'net_amount' => $commissionAmount,
+                    'status' => 'paid',
+                    'failure_reason' => null
+                ]);
+
+                Database::update(
+                    'conversions',
+                    ['status' => 'paid', 'payout_id' => $payoutId],
+                    'id = ?',
+                    [$conversionId]
+                );
+            });
+            return;
+        }
+
+        if (empty($stripeCustomerId)) {
+            throw new \RuntimeException('Partner has no linked Stripe customer account for Stripe balance payout.');
+        }
+
+        $balanceTransactionId = $this->createStripeCustomerBalanceTransaction(
+            $stripeCustomerId,
+            $commissionAmount,
+            $conversionId
+        );
+
+        Database::transaction(function () use ($conversion, $commissionAmount, $balanceTransactionId, $conversionId) {
+            $payoutId = Database::insert('payouts', [
+                'partner_id' => (int) $conversion['partner_id'],
+                'stripe_transfer_id' => null,
+                'stripe_customer_balance_transaction_id' => $balanceTransactionId,
+                'payout_method' => 'stripe_customer_balance',
+                'amount' => $commissionAmount,
+                'fee_amount' => 0.00,
+                'net_amount' => $commissionAmount,
+                'status' => 'paid',
+                'failure_reason' => null
+            ]);
+
+            Database::update(
+                'conversions',
+                ['status' => 'paid', 'payout_id' => $payoutId],
+                'id = ?',
+                [$conversionId]
+            );
+        });
+    }
+
+    private function createStripeCustomerBalanceTransaction(string $stripeCustomerId, float $commissionAmount, int $conversionId): string {
+        $stripeApiKey = $this->getStripeApiKey();
+        if ($stripeApiKey === '') {
+            throw new \RuntimeException('Stripe secret key is missing.');
+        }
+
+        $amountInCents = (int) round($commissionAmount * 100);
+        if ($amountInCents <= 0) {
+            throw new \RuntimeException('Invalid payout amount.');
+        }
+
+        $endpoint = 'https://api.stripe.com/v1/customers/' . rawurlencode($stripeCustomerId) . '/balance_transactions';
+        $payload = http_build_query([
+            'amount' => -$amountInCents,
+            'currency' => 'usd',
+            'description' => 'Affiliate payout for conversion #' . $conversionId
+        ]);
+
+        $ch = curl_init($endpoint);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $payload,
+            CURLOPT_HTTPHEADER => [
+                'Authorization: Bearer ' . $stripeApiKey,
+                'Stripe-Version: 2023-10-16',
+                'Idempotency-Key: numok-conversion-payout-' . $conversionId,
+                'Content-Type: application/x-www-form-urlencoded'
+            ]
+        ]);
+
+        $response = curl_exec($ch);
+        $curlError = curl_error($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($response === false) {
+            throw new \RuntimeException('Stripe payout request failed: ' . $curlError);
+        }
+
+        $responseData = json_decode($response, true);
+        if ($httpCode >= 400 || !is_array($responseData) || empty($responseData['id'])) {
+            $stripeError = $responseData['error']['message'] ?? 'Unknown Stripe API error.';
+            throw new \RuntimeException('Stripe payout failed: ' . $stripeError);
+        }
+
+        return (string) $responseData['id'];
+    }
+
+    private function getStripeApiKey(): string {
+        $settings = $this->getSettings();
+        return $settings['stripe_secret_key'] ?? '';
     }
 }

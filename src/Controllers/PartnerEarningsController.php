@@ -12,6 +12,7 @@ class PartnerEarningsController extends PartnerBaseController {
 
     public function index(): void {
         $partnerId = $_SESSION['partner_id'];
+        $this->promoteMaturePendingConversions();
         
         // Get filter parameters
         $status = $_GET['status'] ?? 'all';
@@ -35,6 +36,9 @@ class PartnerEarningsController extends PartnerBaseController {
         
         // Get monthly earnings for chart
         $monthlyEarnings = $this->getMonthlyEarnings($partnerId, $period);
+
+        // Get payout account status
+        $payoutAccount = $this->getPayoutAccount($partnerId);
         
         // Calculate pagination
         $totalPages = ceil($totalCount / $perPage);
@@ -46,6 +50,7 @@ class PartnerEarningsController extends PartnerBaseController {
             'conversions' => $conversions,
             'programs' => $programs,
             'monthly_earnings' => $monthlyEarnings,
+            'payout_account' => $payoutAccount,
             'filters' => [
                 'status' => $status,
                 'program' => $program,
@@ -217,5 +222,17 @@ class PartnerEarningsController extends PartnerBaseController {
              ORDER BY month ASC",
             [$partnerId, $months]
         )->fetchAll();
+    }
+
+    private function getPayoutAccount(int $partnerId): array {
+        $partner = Database::query(
+            "SELECT stripe_customer_id FROM partners WHERE id = ? LIMIT 1",
+            [$partnerId]
+        )->fetch();
+
+        return [
+            'stripe_customer_id' => $partner['stripe_customer_id'] ?? null,
+            'is_linked' => !empty($partner['stripe_customer_id'])
+        ];
     }
 } 
