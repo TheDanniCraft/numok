@@ -1,8 +1,8 @@
 -- Add payout metadata needed for Stripe customer-balance payouts
 ALTER TABLE payouts
-  ADD COLUMN stripe_customer_balance_transaction_id VARCHAR(100) DEFAULT NULL
+  ADD COLUMN IF NOT EXISTS stripe_customer_balance_transaction_id VARCHAR(100) DEFAULT NULL
     AFTER stripe_transfer_id,
-  ADD COLUMN payout_method ENUM('manual','stripe_transfer','stripe_customer_balance')
+  ADD COLUMN IF NOT EXISTS payout_method ENUM('manual','stripe_transfer','stripe_customer_balance')
     NOT NULL DEFAULT 'manual'
     AFTER stripe_customer_balance_transaction_id;
 

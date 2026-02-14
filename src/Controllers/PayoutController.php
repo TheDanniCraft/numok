@@ -110,109 +110,119 @@ class PayoutController extends Controller
             $this->redirectToEarnings();
         }
 
-        $this->promoteMaturePendingConversions();
+        $partnerId = (int) ($_SESSION['partner_id'] ?? 0);
+        if ($partnerId <= 0) {
+            $this->redirectToEarnings('earnings_error', 'Invalid partner session.');
+        }
 
         try {
-            $partnerId = (int) ($_SESSION['partner_id'] ?? 0);
-            if ($partnerId <= 0) {
-                $this->redirectToEarnings('earnings_error', 'Invalid partner session.');
-            }
-
             $payoutSource = (string) ($_POST['payout_source'] ?? 'stripe_customer_balance');
-            $supportedSources = array_values(array_intersect(
-                ['stripe_customer_balance'],
-                $this->getEnabledPayoutMethods()
-            ));
-            if (!in_array($payoutSource, $supportedSources, true)) {
-                $this->redirectToEarnings('earnings_error', 'Unsupported payout source selected.');
-            }
+            $result = $this->withNamedLock('partner_payout_' . $partnerId, function () use ($partnerId, $payoutSource): array {
+                $supportedSources = array_values(array_intersect(
+                    ['stripe_customer_balance'],
+                    $this->getEnabledPayoutMethods()
+                ));
+                if (!in_array($payoutSource, $supportedSources, true)) {
+                    throw new \InvalidArgumentException('Unsupported payout source selected.');
+                }
 
-            $partner = Database::query(
-                "SELECT stripe_customer_id FROM partners WHERE id = ? LIMIT 1",
-                [$partnerId]
-            )->fetch();
+                $partner = Database::query(
+                    "SELECT stripe_customer_id FROM partners WHERE id = ? LIMIT 1",
+                    [$partnerId]
+                )->fetch();
 
-            if (!$partner || empty($partner['stripe_customer_id'])) {
-                $this->redirectToEarnings('earnings_error', 'Please link your Stripe customer account first.');
-            }
+                if (!$partner || empty($partner['stripe_customer_id'])) {
+                    throw new \InvalidArgumentException('Please link your Stripe customer account first.');
+                }
 
-            $payableConversions = Database::query(
-                "SELECT c.id, c.commission_amount
-                 FROM conversions c
-                 JOIN partner_programs pp ON c.partner_program_id = pp.id
-                 WHERE pp.partner_id = ?
-                 AND c.status = 'payable'
-                 ORDER BY c.id ASC",
-                [$partnerId]
-            )->fetchAll();
+                $payableConversions = Database::query(
+                    "SELECT c.id, c.commission_amount
+                     FROM conversions c
+                     JOIN partner_programs pp ON c.partner_program_id = pp.id
+                     WHERE pp.partner_id = ?
+                     AND c.status = 'payable'
+                     AND c.payout_id IS NULL
+                     ORDER BY c.id ASC",
+                    [$partnerId]
+                )->fetchAll();
 
-            if (empty($payableConversions)) {
-                $this->redirectToEarnings('earnings_error', 'No payable balance available.');
-            }
+                if (empty($payableConversions)) {
+                    throw new \InvalidArgumentException('No payable balance available.');
+                }
 
-            $conversionIds = array_map(static fn(array $row): int => (int) $row['id'], $payableConversions);
-            $totalAmount = 0.0;
-            foreach ($payableConversions as $row) {
-                $totalAmount += (float) $row['commission_amount'];
-            }
-            $totalAmount = round($totalAmount, 2);
+                $conversionIds = array_map(static fn(array $row): int => (int) $row['id'], $payableConversions);
+                $totalAmount = 0.0;
+                foreach ($payableConversions as $row) {
+                    $totalAmount += (float) $row['commission_amount'];
+                }
+                $totalAmount = round($totalAmount, 2);
 
-            if ($totalAmount <= 0) {
-                $this->redirectToEarnings('earnings_error', 'No payable balance available.');
-            }
+                if ($totalAmount <= 0) {
+                    throw new \InvalidArgumentException('No payable balance available.');
+                }
 
-            $minPayoutAmount = $this->getMinimumPayoutAmountForSource($payoutSource);
-            if ($totalAmount < $minPayoutAmount) {
-                $this->redirectToEarnings(
-                    'earnings_error',
-                    'Minimum payout amount for ' . $this->getPayoutSourceLabel($payoutSource) . ' is $' . number_format($minPayoutAmount, 2) . '.'
+                $minPayoutAmount = $this->getMinimumPayoutAmountForSource($payoutSource);
+                if ($totalAmount < $minPayoutAmount) {
+                    throw new \InvalidArgumentException(
+                        'Minimum payout amount for ' . $this->getPayoutSourceLabel($payoutSource) . ' is $' . number_format($minPayoutAmount, 2) . '.'
+                    );
+                }
+
+                $idempotencyKey = 'numok-partner-payout-' . $partnerId . '-' . sha1(implode(',', $conversionIds));
+                if (count($conversionIds) === 1) {
+                    $description = 'Affiliate payout for conversion #' . $conversionIds[0];
+                } else {
+                    $conversionIdLabels = array_map(static fn(int $id): string => '#' . $id, $conversionIds);
+                    $description = 'Affiliate payout for ' . count($conversionIds) . ' conversions (' . implode(', ', $conversionIdLabels) . ')';
+                }
+                if (strlen($description) > 240) {
+                    $description = 'Affiliate payout for ' . count($conversionIds) . ' conversions';
+                }
+
+                $balanceTransactionId = $this->createStripeCustomerBalanceTransaction(
+                    (string) $partner['stripe_customer_id'],
+                    $totalAmount,
+                    $description,
+                    $idempotencyKey
                 );
-            }
 
-            $idempotencyKey = 'numok-partner-payout-' . $partnerId . '-' . sha1(implode(',', $conversionIds));
-            if (count($conversionIds) === 1) {
-                $description = 'Affiliate payout for conversion #' . $conversionIds[0];
-            } else {
-                $conversionIdLabels = array_map(static fn(int $id): string => '#' . $id, $conversionIds);
-                $description = 'Affiliate payout for ' . count($conversionIds) . ' conversions (' . implode(', ', $conversionIdLabels) . ')';
-            }
-            if (strlen($description) > 240) {
-                $description = 'Affiliate payout for ' . count($conversionIds) . ' conversions';
-            }
-            $balanceTransactionId = $this->createStripeCustomerBalanceTransaction(
-                (string) $partner['stripe_customer_id'],
-                $totalAmount,
-                $description,
-                $idempotencyKey
-            );
+                Database::transaction(function () use ($partnerId, $conversionIds, $totalAmount, $balanceTransactionId) {
+                    $payoutId = Database::insert('payouts', [
+                        'partner_id' => $partnerId,
+                        'stripe_transfer_id' => null,
+                        'stripe_customer_balance_transaction_id' => $balanceTransactionId,
+                        'payout_method' => 'stripe_customer_balance',
+                        'amount' => $totalAmount,
+                        'fee_amount' => 0.00,
+                        'net_amount' => $totalAmount,
+                        'status' => 'paid',
+                        'failure_reason' => null
+                    ]);
 
-            Database::transaction(function () use ($partnerId, $conversionIds, $totalAmount, $balanceTransactionId) {
-                $payoutId = Database::insert('payouts', [
-                    'partner_id' => $partnerId,
-                    'stripe_transfer_id' => null,
-                    'stripe_customer_balance_transaction_id' => $balanceTransactionId,
-                    'payout_method' => 'stripe_customer_balance',
-                    'amount' => $totalAmount,
-                    'fee_amount' => 0.00,
-                    'net_amount' => $totalAmount,
-                    'status' => 'paid',
-                    'failure_reason' => null
-                ]);
+                    $placeholders = implode(',', array_fill(0, count($conversionIds), '?'));
+                    $stmt = Database::query(
+                        "UPDATE conversions
+                         SET status = 'paid', payout_id = ?
+                         WHERE status = 'payable'
+                         AND payout_id IS NULL
+                         AND id IN ({$placeholders})",
+                        array_merge([$payoutId], $conversionIds)
+                    );
 
-                $placeholders = implode(',', array_fill(0, count($conversionIds), '?'));
-                Database::query(
-                    "UPDATE conversions
-                     SET status = 'paid', payout_id = ?
-                     WHERE status = 'payable'
-                     AND id IN ({$placeholders})",
-                    array_merge([$payoutId], $conversionIds)
-                );
+                    if ((int) $stmt->rowCount() !== count($conversionIds)) {
+                        throw new \RuntimeException('Payable conversions changed during payout processing.');
+                    }
+                });
+
+                return ['total_amount' => $totalAmount];
             });
 
             $this->redirectToEarnings(
                 'earnings_success',
-                'Payout successful. $' . number_format($totalAmount, 2) . ' has been credited to your Stripe customer balance.'
+                'Payout successful. $' . number_format((float) $result['total_amount'], 2) . ' has been credited to your Stripe customer balance.'
             );
+        } catch (\InvalidArgumentException $e) {
+            $this->redirectToEarnings('earnings_error', $e->getMessage());
         } catch (\Exception $e) {
             error_log('Partner payout failed: ' . $e->getMessage());
             $this->redirectToEarnings('earnings_error', 'Payout failed. Please try again later or contact support.');

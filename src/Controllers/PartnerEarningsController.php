@@ -12,7 +12,6 @@ class PartnerEarningsController extends PartnerBaseController {
 
     public function index(): void {
         $partnerId = $_SESSION['partner_id'];
-        $this->promoteMaturePendingConversions();
         
         // Get filter parameters
         $status = $_GET['status'] ?? 'all';
@@ -24,6 +23,7 @@ class PartnerEarningsController extends PartnerBaseController {
 
         // Get earnings summary
         $summary = $this->getEarningsSummary($partnerId, $status, $program, $period);
+        $payoutSummary = $this->getPayoutSummary($partnerId);
         
         // Get detailed conversions with filters
         $conversions = $this->getConversions($partnerId, $status, $program, $period, $perPage, $offset);
@@ -47,6 +47,7 @@ class PartnerEarningsController extends PartnerBaseController {
         $this->view('partner/earnings/index', [
             'title' => 'Earnings - ' . ($settings['custom_app_name'] ?? 'Numok'),
             'summary' => $summary,
+            'payout_summary' => $payoutSummary,
             'conversions' => $conversions,
             'programs' => $programs,
             'monthly_earnings' => $monthlyEarnings,
@@ -233,6 +234,40 @@ class PartnerEarningsController extends PartnerBaseController {
         return [
             'stripe_customer_id' => $partner['stripe_customer_id'] ?? null,
             'is_linked' => !empty($partner['stripe_customer_id'])
+        ];
+    }
+
+    private function getPayoutSummary(int $partnerId): array {
+        $summary = Database::query(
+            "SELECT
+                COUNT(c.id) AS payable_count,
+                COALESCE(SUM(c.commission_amount), 0) AS payable_amount
+             FROM conversions c
+             JOIN partner_programs pp ON c.partner_program_id = pp.id
+             WHERE pp.partner_id = ?
+               AND c.status = 'payable'
+               AND c.payout_id IS NULL",
+            [$partnerId]
+        )->fetch();
+
+        $previewIds = Database::query(
+            "SELECT c.id
+             FROM conversions c
+             JOIN partner_programs pp ON c.partner_program_id = pp.id
+             WHERE pp.partner_id = ?
+               AND c.status = 'payable'
+               AND c.payout_id IS NULL
+             ORDER BY c.id ASC
+             LIMIT 5",
+            [$partnerId]
+        )->fetchAll();
+
+        $previewIds = array_map(static fn(array $row): int => (int) $row['id'], $previewIds);
+
+        return [
+            'payable_count' => (int) ($summary['payable_count'] ?? 0),
+            'payable_amount' => (float) ($summary['payable_amount'] ?? 0),
+            'payable_preview_ids' => $previewIds,
         ];
     }
 } 

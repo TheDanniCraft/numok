@@ -11,8 +11,6 @@ class ConversionsController extends Controller {
     }
 
     public function index(): void {
-        $this->promoteMaturePendingConversions();
-
         // Get filter parameters
         $status = $_GET['status'] ?? 'all';
         $partnerId = intval($_GET['partner_id'] ?? 0);
@@ -111,8 +109,6 @@ class ConversionsController extends Controller {
             exit;
         }
 
-        $this->promoteMaturePendingConversions();
-
         $id = intval($_POST['id'] ?? 0);
         $status = $_POST['status'] ?? '';
         $payoutSource = $_POST['payout_source'] ?? null;
@@ -124,21 +120,25 @@ class ConversionsController extends Controller {
         }
 
         try {
-            if ($status === 'paid') {
-                $this->handlePaidStatusUpdate($id, $payoutSource);
-            } else {
+            $partnerId = $this->getPartnerIdForConversion($id);
+            $this->withNamedLock('partner_payout_' . $partnerId, function () use ($id, $status, $payoutSource): void {
+                if ($status === 'paid') {
+                    $this->executePaidStatusUpdate($id, $payoutSource);
+                    return;
+                }
+
                 Database::update(
                     'conversions',
                     ['status' => $status],
                     'id = ?',
                     [$id]
                 );
-            }
+            });
 
             $_SESSION['success'] = 'Conversion status updated successfully.';
         } catch (\Exception $e) {
             error_log('Failed to update conversion status: ' . $e->getMessage());
-            $_SESSION['error'] = 'Failed to update conversion status: ' . $e->getMessage();
+            $_SESSION['error'] = 'Failed to update conversion status.';
         }
 
         header('Location: /admin/conversions');
@@ -201,7 +201,7 @@ class ConversionsController extends Controller {
         exit;
     }
 
-    private function handlePaidStatusUpdate(int $conversionId, ?string $payoutSource = null): void {
+    private function executePaidStatusUpdate(int $conversionId, ?string $payoutSource = null): void {
         $conversion = Database::query(
             "SELECT
                 c.id,
@@ -237,9 +237,13 @@ class ConversionsController extends Controller {
         }
 
         $stripeCustomerId = $conversion['stripe_customer_id'] ?? null;
+        $defaultSource = (
+            !empty($stripeCustomerId)
+            && in_array('stripe_customer_balance', $allowedSources, true)
+        ) ? 'stripe_customer_balance' : 'manual';
         $resolvedSource = $requestedSource !== ''
             ? $requestedSource
-            : (!empty($stripeCustomerId) ? 'stripe_customer_balance' : 'manual');
+            : $defaultSource;
 
         if ($resolvedSource === 'manual') {
             Database::transaction(function () use ($conversion, $commissionAmount, $conversionId) {
@@ -349,5 +353,22 @@ class ConversionsController extends Controller {
     private function getStripeApiKey(): string {
         $settings = $this->getSettings();
         return $settings['stripe_secret_key'] ?? '';
+    }
+
+    private function getPartnerIdForConversion(int $conversionId): int {
+        $lookup = Database::query(
+            "SELECT pp.partner_id
+             FROM conversions c
+             JOIN partner_programs pp ON c.partner_program_id = pp.id
+             WHERE c.id = ?
+             LIMIT 1",
+            [$conversionId]
+        )->fetch();
+
+        if (!$lookup || empty($lookup['partner_id'])) {
+            throw new \RuntimeException('Conversion not found.');
+        }
+
+        return (int) $lookup['partner_id'];
     }
 }

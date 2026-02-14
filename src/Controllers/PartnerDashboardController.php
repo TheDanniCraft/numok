@@ -12,7 +12,6 @@ class PartnerDashboardController extends PartnerBaseController {
 
     public function index(): void {
         $partnerId = $_SESSION['partner_id'];
-        $this->promoteMaturePendingConversions();
 
         // Get comprehensive stats
         $stats = $this->getStats($partnerId);

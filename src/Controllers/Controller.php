@@ -57,20 +57,30 @@ class Controller {
         echo json_encode($data);
     }
 
-    protected function promoteMaturePendingConversions(): void {
+    protected function withNamedLock(string $lockName, callable $callback, int $timeoutSeconds = 10): mixed {
+        $lock = Database::query('SELECT GET_LOCK(?, ?) AS lock_acquired', [$lockName, $timeoutSeconds])->fetch();
+        $result = $lock['lock_acquired'] ?? null;
+
+        if ($result === null) {
+            throw new \RuntimeException('Error while acquiring lock.');
+        }
+
+        if ((int) $result !== 1) {
+            throw new \RuntimeException('Could not acquire lock (timeout).');
+        }
+
         try {
-            Database::query(
-                "UPDATE conversions c
-                 JOIN partner_programs pp ON c.partner_program_id = pp.id
-                 JOIN programs p ON pp.program_id = p.id
-                 SET c.status = 'payable',
-                     c.updated_at = CURRENT_TIMESTAMP
-                 WHERE c.status = 'pending'
-                   AND p.reward_days > 0
-                   AND c.created_at <= DATE_SUB(NOW(), INTERVAL p.reward_days DAY)"
-            );
-        } catch (\Exception $e) {
-            error_log('Failed to auto-promote pending conversions: ' . $e->getMessage());
+            return $callback();
+        } finally {
+            try {
+                $release = Database::query('SELECT RELEASE_LOCK(?) AS released', [$lockName])->fetch();
+                $released = $release['released'] ?? null;
+                if ((int) $released !== 1) {
+                    error_log('Lock "' . $lockName . '" may not have been released properly.');
+                }
+            } catch (\Throwable $e) {
+                error_log('Failed to release lock "' . $lockName . '": ' . $e->getMessage());
+            }
         }
     }
 
@@ -79,11 +89,9 @@ class Controller {
         $settings = $this->getSettings();
         $raw = $settings['enabled_payout_methods'] ?? '';
 
-        if (!is_string($raw) || trim($raw) === '') {
-            return ['manual', 'stripe_customer_balance'];
-        }
-
-        $requested = array_filter(array_map('trim', explode(',', $raw)));
+        $requested = is_string($raw)
+            ? array_filter(array_map('trim', explode(',', $raw)))
+            : [];
         $enabled = array_values(array_intersect($allowed, $requested));
 
         if (empty($enabled)) {
