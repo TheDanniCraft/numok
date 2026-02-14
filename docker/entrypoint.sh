@@ -34,6 +34,8 @@ chown -R www-data:www-data "$UPLOADS_DIR" "$TRACKING_DIR" || true
 : "${DB_NAME:=numok_app}"
 : "${DB_USER:=numok_user}"
 : "${DB_PASS:=change_me_app_2025}"
+: "${ENABLE_CONVERSION_CRON:=true}"
+: "${CONVERSION_CRON_SCHEDULE:=* * * * *}"
 
 # Allow optional one-time DB bootstrap via RUN_MIGRATIONS=true
 if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
@@ -90,6 +92,23 @@ if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
     fi
   else
     echo "[entrypoint] mysql client not found - cannot run migrations" >&2
+  fi
+fi
+
+# Configure and start cron job for conversion promotion
+if [ "${ENABLE_CONVERSION_CRON}" = "true" ]; then
+  CRON_FILE="/etc/cron.d/numok-promote"
+  CRON_CMD="/usr/local/bin/php $APP_ROOT/bin/promote-conversions.php >> /var/log/numok-promote.log 2>&1"
+
+  echo "[entrypoint] Configuring conversion promotion cron: ${CONVERSION_CRON_SCHEDULE}"
+  printf "%s root %s\n" "$CONVERSION_CRON_SCHEDULE" "$CRON_CMD" > "$CRON_FILE"
+  chmod 0644 "$CRON_FILE"
+  touch /var/log/numok-promote.log
+
+  if command -v service >/dev/null 2>&1; then
+    service cron start >/dev/null 2>&1 || cron
+  else
+    cron
   fi
 fi
 

@@ -19,6 +19,9 @@ services:
       DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
       # One-time schema bootstrap (optional)
       RUN_MIGRATIONS: ${RUN_MIGRATIONS-true}
+      # Cron for pending -> payable promotion
+      ENABLE_CONVERSION_CRON: ${ENABLE_CONVERSION_CRON-true}
+      CONVERSION_CRON_SCHEDULE: "${CONVERSION_CRON_SCHEDULE:-* * * * *}"
     depends_on:
       - db
     volumes:

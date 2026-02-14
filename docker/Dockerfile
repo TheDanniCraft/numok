@@ -18,6 +18,7 @@ RUN apt-get update \
         unzip \
         libzip-dev \
         default-mysql-client \
+        cron \
         libonig-dev \
         pkg-config \
         iputils-ping \

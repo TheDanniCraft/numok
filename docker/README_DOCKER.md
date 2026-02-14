@@ -113,6 +113,19 @@ The container automatically:
 - Generates `config/config.php` from `config.example.php`
 - Creates necessary directories with proper permissions
 - Runs database migrations on first boot (if `RUN_MIGRATIONS=true`)
+- Installs and starts cron, then schedules conversion promotion (if `ENABLE_CONVERSION_CRON=true`)
+
+### Conversion Promotion Cron
+
+The app container auto-configures this cron command by default:
+
+```bash
+* * * * * /usr/local/bin/php /var/www/html/bin/promote-conversions.php >> /var/log/numok-promote.log 2>&1
+```
+
+Control via environment variables:
+- `ENABLE_CONVERSION_CRON=true|false`
+- `CONVERSION_CRON_SCHEDULE="* * * * *"`
 
 ### Health Monitoring
 - Database health checks every 10 seconds
