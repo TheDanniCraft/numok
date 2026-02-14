@@ -207,3 +207,10 @@ ADD COLUMN IF NOT EXISTS is_private TINYINT(1) NOT NULL DEFAULT 0 AFTER status;
 -- Add index for efficient filtering on visibility (ignore if exists)
 ALTER TABLE programs
 ADD INDEX IF NOT EXISTS idx_is_private (is_private);
+
+-- Migration 0005: Add payout settings defaults
+INSERT INTO settings (name, value)
+VALUES
+  ('enabled_payout_methods', 'stripe_customer_balance'),
+  ('min_payout_amount_stripe_customer_balance', '0.00')
+ON DUPLICATE KEY UPDATE value = VALUES(value);
