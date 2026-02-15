@@ -1,9 +1,6 @@
 -- Migration 0005: update schema from 0004 to payout-methods/Tremendous support.
 
--- Replace legacy partner payment_email with Stripe customer linkage.
-ALTER TABLE partners
-  DROP COLUMN payment_email;
-
+-- Add partner payout identity fields needed by current payout flows.
 ALTER TABLE partners
   ADD COLUMN stripe_customer_id VARCHAR(100) DEFAULT NULL AFTER contact_name;
 

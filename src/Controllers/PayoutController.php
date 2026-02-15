@@ -194,27 +194,23 @@ class PayoutController extends Controller
                     $description = 'Affiliate payout for ' . count($conversionIds) . ' conversions';
                 }
 
-                $balanceTransactionId = null;
-                $tremendousOrderId = null;
-                $tremendousOrderStatus = null;
+                $stripeCustomerId = null;
+                $tremendousRecipientEmail = null;
+                $tremendousRecipientName = null;
+                $tremendousCampaignId = null;
                 if ($resolvedPayoutSource === 'stripe_customer_balance') {
-                    if (empty($partner['stripe_customer_id'])) {
+                    $stripeCustomerId = trim((string) ($partner['stripe_customer_id'] ?? ''));
+                    if ($stripeCustomerId === '') {
                         throw new \InvalidArgumentException('Please link your Stripe customer account first.');
                     }
-                    $balanceTransactionId = $this->createStripeCustomerBalanceTransaction(
-                        (string) $partner['stripe_customer_id'],
-                        $totalAmount,
-                        $description,
-                        $idempotencyKey
-                    );
                 } elseif ($resolvedPayoutSource === 'tremendous') {
-                    $recipientEmail = trim((string) ($partner['email'] ?? ''));
-                    if ($recipientEmail === '') {
+                    $tremendousRecipientEmail = trim((string) ($partner['email'] ?? ''));
+                    if ($tremendousRecipientEmail === '') {
                         throw new \InvalidArgumentException('Partner email is missing for Tremendous payout.');
                     }
-                    $recipientName = trim((string) ($partner['contact_name'] ?? ''));
-                    if ($recipientName === '') {
-                        $recipientName = trim((string) ($partner['company_name'] ?? 'Partner'));
+                    $tremendousRecipientName = trim((string) ($partner['contact_name'] ?? ''));
+                    if ($tremendousRecipientName === '') {
+                        $tremendousRecipientName = trim((string) ($partner['company_name'] ?? 'Partner'));
                     }
 
                     $campaignIds = array_values(array_unique(array_filter(array_map(
@@ -224,101 +220,188 @@ class PayoutController extends Controller
                     if (count($campaignIds) !== 1) {
                         throw new \InvalidArgumentException('Tremendous payout requires one configured campaign ID across all payable conversions.');
                     }
+                    $tremendousCampaignId = $campaignIds[0];
+                }
 
-                    try {
-                        $tremendousOrder = $this->createTremendousOrder(
-                            $recipientName,
-                            $recipientEmail,
+                $reservePayoutId = null;
+                Database::transaction(function () use ($partnerId, $conversionIds, $totalAmount, $resolvedPayoutSource, &$reservePayoutId): void {
+                    $reservePayoutId = Database::insert('payouts', [
+                        'partner_id' => $partnerId,
+                        'stripe_customer_balance_transaction_id' => null,
+                        'tremendous_order_id' => null,
+                        'payout_method' => $resolvedPayoutSource,
+                        'amount' => $totalAmount,
+                        'status' => 'processing',
+                        'failure_reason' => null
+                    ]);
+
+                    $placeholders = implode(',', array_fill(0, count($conversionIds), '?'));
+                    $stmt = Database::query(
+                        "UPDATE conversions
+                         SET payout_id = ?, last_payout_failure_reason = NULL, last_payout_failed_at = NULL
+                         WHERE status = 'payable'
+                           AND payout_id IS NULL
+                           AND id IN ({$placeholders})",
+                        array_merge([$reservePayoutId], $conversionIds)
+                    );
+
+                    if ((int) $stmt->rowCount() !== count($conversionIds)) {
+                        throw new \RuntimeException('Payable conversions changed during payout processing.');
+                    }
+                });
+                if (!is_int($reservePayoutId) || $reservePayoutId <= 0) {
+                    throw new \RuntimeException('Failed to reserve payout.');
+                }
+
+                $balanceTransactionId = null;
+                $tremendousOrderId = null;
+                $tremendousOrderStatus = null;
+                try {
+                    if ($resolvedPayoutSource === 'stripe_customer_balance') {
+                        $balanceTransactionId = $this->createStripeCustomerBalanceTransaction(
+                            (string) $stripeCustomerId,
                             $totalAmount,
-                            $campaignIds[0],
+                            $description,
+                            $idempotencyKey
+                        );
+                    } elseif ($resolvedPayoutSource === 'tremendous') {
+                        $tremendousOrder = $this->createTremendousOrder(
+                            (string) $tremendousRecipientName,
+                            (string) $tremendousRecipientEmail,
+                            $totalAmount,
+                            (string) $tremendousCampaignId,
                             $tremendousExternalId,
                             $description
                         );
-                    } catch (\Exception $e) {
-                        $this->recordFailedPayoutAttempt(
-                            $partnerId,
-                            $totalAmount,
-                            'tremendous',
-                            $e->getMessage(),
-                            $conversionIds
-                        );
-                        throw $e;
-                    }
-                    $tremendousOrderId = $tremendousOrder['order_id'];
-                    $tremendousOrderStatus = (string) ($tremendousOrder['order_status'] ?? '');
+                        $tremendousOrderId = $tremendousOrder['order_id'];
+                        $tremendousOrderStatus = (string) ($tremendousOrder['order_status'] ?? '');
 
-                    if ($this->isTremendousOrderFailureStatus($tremendousOrderStatus)) {
-                        $normalizedStatus = strtoupper(trim($tremendousOrderStatus));
-                        $isCanceled = $normalizedStatus === 'CANCELED';
-                        $this->recordFailedPayoutAttempt(
-                            $partnerId,
-                            $totalAmount,
-                            'tremendous',
-                            'Tremendous order failed with status: ' . $normalizedStatus,
-                            $conversionIds,
-                            $isCanceled ? 'canceled' : 'failed'
-                        );
-                        if ($isCanceled) {
-                            throw new \RuntimeException('Tremendous payout was canceled.');
+                        if ($this->isTremendousOrderFailureStatus($tremendousOrderStatus)) {
+                            $normalizedStatus = strtoupper(trim($tremendousOrderStatus));
+                            $isCanceled = $normalizedStatus === 'CANCELED';
+                            if ($isCanceled) {
+                                throw new \RuntimeException('Tremendous payout was canceled.');
+                            }
+                            throw new \RuntimeException('Tremendous payout failed: order status is ' . $normalizedStatus . '.');
                         }
-                        throw new \RuntimeException('Tremendous payout failed: order status is ' . $normalizedStatus . '.');
                     }
+                } catch (\Throwable $providerError) {
+                    $providerMessage = trim($providerError->getMessage());
+                    $providerMessage = $providerMessage === '' ? 'External payout request failed.' : $providerMessage;
+                    $isCanceled = str_contains(strtolower($providerMessage), 'canceled');
+                    $terminalStatus = $isCanceled ? 'canceled' : 'failed';
+                    $failureReason = mb_substr($providerMessage, 0, 255);
+
+                    Database::transaction(function () use ($reservePayoutId, $conversionIds, $terminalStatus, $failureReason, $isCanceled, $tremendousOrderId): void {
+                        Database::update(
+                            'payouts',
+                            [
+                                'status' => $terminalStatus,
+                                'tremendous_order_id' => $tremendousOrderId,
+                                'failure_reason' => $isCanceled ? null : $failureReason
+                            ],
+                            'id = ?',
+                            [$reservePayoutId]
+                        );
+
+                        $placeholders = implode(',', array_fill(0, count($conversionIds), '?'));
+                        if ($isCanceled) {
+                            Database::query(
+                                "UPDATE conversions
+                                 SET payout_id = NULL,
+                                     last_payout_failure_reason = NULL,
+                                     last_payout_failed_at = NOW()
+                                 WHERE payout_id = ?
+                                   AND id IN ({$placeholders})",
+                                array_merge([$reservePayoutId], $conversionIds)
+                            );
+                        } else {
+                            Database::query(
+                                "UPDATE conversions
+                                 SET payout_id = NULL,
+                                     last_payout_failure_reason = ?,
+                                     last_payout_failed_at = NOW()
+                                 WHERE payout_id = ?
+                                   AND id IN ({$placeholders})",
+                                array_merge([$failureReason, $reservePayoutId], $conversionIds)
+                            );
+                        }
+                    });
+
+                    throw $providerError;
                 }
 
-                $isPendingApproval = $resolvedPayoutSource === 'tremendous'
-                    && $this->isTremendousOrderPendingStatus((string) $tremendousOrderStatus);
+                $isPendingApproval = false;
+                if ($resolvedPayoutSource === 'tremendous') {
+                    $isPendingApproval = $this->isTremendousOrderPendingStatus((string) $tremendousOrderStatus);
+                }
 
-                if ($isPendingApproval) {
-                    $pendingPayoutStatus = $this->mapTremendousPendingPayoutStatus((string) $tremendousOrderStatus);
-                    Database::transaction(function () use ($partnerId, $conversionIds, $totalAmount, $tremendousOrderId, $pendingPayoutStatus): void {
-                        $payoutId = Database::insert('payouts', [
-                            'partner_id' => $partnerId,
-                            'stripe_customer_balance_transaction_id' => null,
-                            'tremendous_order_id' => $tremendousOrderId,
-                            'payout_method' => 'tremendous',
-                            'amount' => $totalAmount,
-                            'status' => $pendingPayoutStatus,
-                            'failure_reason' => null
-                        ]);
+                try {
+                    if ($isPendingApproval) {
+                        $pendingPayoutStatus = $this->mapTremendousPendingPayoutStatus((string) $tremendousOrderStatus);
+                        Database::transaction(function () use ($reservePayoutId, $tremendousOrderId, $pendingPayoutStatus): void {
+                            Database::update(
+                                'payouts',
+                                [
+                                    'status' => $pendingPayoutStatus,
+                                    'tremendous_order_id' => $tremendousOrderId,
+                                    'failure_reason' => null
+                                ],
+                                'id = ?',
+                                [$reservePayoutId]
+                            );
+                        });
+                    } else {
+                        Database::transaction(function () use ($reservePayoutId, $conversionIds, $balanceTransactionId, $tremendousOrderId): void {
+                            Database::update(
+                                'payouts',
+                                [
+                                    'status' => 'paid',
+                                    'stripe_customer_balance_transaction_id' => $balanceTransactionId,
+                                    'tremendous_order_id' => $tremendousOrderId,
+                                    'failure_reason' => null
+                                ],
+                                'id = ?',
+                                [$reservePayoutId]
+                            );
+
+                            $placeholders = implode(',', array_fill(0, count($conversionIds), '?'));
+                            Database::query(
+                                "UPDATE conversions
+                                 SET status = 'paid',
+                                     last_payout_failure_reason = NULL,
+                                     last_payout_failed_at = NULL
+                                 WHERE payout_id = ?
+                                   AND id IN ({$placeholders})",
+                                array_merge([$reservePayoutId], $conversionIds)
+                            );
+                        });
+                    }
+                } catch (\Throwable $finalizeError) {
+                    $failureReason = 'Payout finalization failed: ' . mb_substr($finalizeError->getMessage(), 0, 200);
+                    Database::transaction(function () use ($reservePayoutId, $conversionIds, $failureReason): void {
+                        Database::update(
+                            'payouts',
+                            [
+                                'status' => 'failed',
+                                'failure_reason' => $failureReason
+                            ],
+                            'id = ?',
+                            [$reservePayoutId]
+                        );
 
                         $placeholders = implode(',', array_fill(0, count($conversionIds), '?'));
-                        $stmt = Database::query(
+                        Database::query(
                             "UPDATE conversions
-                             SET payout_id = ?, last_payout_failure_reason = NULL, last_payout_failed_at = NULL
-                             WHERE status = 'payable'
-                               AND payout_id IS NULL
+                             SET payout_id = NULL,
+                                 last_payout_failure_reason = ?,
+                                 last_payout_failed_at = NOW()
+                             WHERE payout_id = ?
                                AND id IN ({$placeholders})",
-                            array_merge([$payoutId], $conversionIds)
+                            array_merge([$failureReason, $reservePayoutId], $conversionIds)
                         );
-
-                        if ((int) $stmt->rowCount() !== count($conversionIds)) {
-                            throw new \RuntimeException('Payable conversions changed during payout processing.');
-                        }
                     });
-                } else {
-                    Database::transaction(function () use ($partnerId, $conversionIds, $totalAmount, $balanceTransactionId, $tremendousOrderId, $resolvedPayoutSource): void {
-                        $payoutId = $this->createSuccessfulPayout(
-                            $partnerId,
-                            $resolvedPayoutSource,
-                            $totalAmount,
-                            $balanceTransactionId,
-                            $tremendousOrderId
-                        );
-
-                        $placeholders = implode(',', array_fill(0, count($conversionIds), '?'));
-                        $stmt = Database::query(
-                            "UPDATE conversions
-                             SET status = 'paid', payout_id = ?, last_payout_failure_reason = NULL, last_payout_failed_at = NULL
-                             WHERE status = 'payable'
-                               AND payout_id IS NULL
-                               AND id IN ({$placeholders})",
-                            array_merge([$payoutId], $conversionIds)
-                        );
-
-                        if ((int) $stmt->rowCount() !== count($conversionIds)) {
-                            throw new \RuntimeException('Payable conversions changed during payout processing.');
-                        }
-                    });
+                    throw $finalizeError;
                 }
 
                 return [
@@ -362,6 +445,9 @@ class PayoutController extends Controller
         } catch (\InvalidArgumentException $e) {
             $this->redirectToEarnings('earnings_error', $e->getMessage());
         } catch (\Exception $e) {
+            if (str_contains(strtolower($e->getMessage()), 'tremendous payout was canceled')) {
+                $this->redirectToEarnings('earnings_error', 'Payout was canceled in Tremendous. No payout was sent.');
+            }
             error_log('Partner payout failed: ' . $e->getMessage());
             $this->redirectToEarnings('earnings_error', 'Payout failed. Please try again later or contact support.');
         }

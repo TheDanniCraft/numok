@@ -157,6 +157,8 @@ class Controller {
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_SLASHES),
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 45,
             CURLOPT_HTTPHEADER => [
                 'Authorization: Bearer ' . $apiKey,
                 'Content-Type: application/json'
