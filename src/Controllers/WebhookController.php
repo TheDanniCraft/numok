@@ -407,8 +407,9 @@ class WebhookController extends Controller {
         $secret = trim((string) $this->getSettingValue('tremendous_webhook_private_key'));
         if ($secret === '') {
             $this->logEvent('tremendous_webhook_missing_secret', ['signature' => $signature]);
-            http_response_code(503);
-            echo 'webhook secret not configured';
+            // Acknowledge to avoid endless retries when local config is missing.
+            http_response_code(200);
+            echo 'ok';
             return;
         }
 
@@ -421,7 +422,10 @@ class WebhookController extends Controller {
 
         $event = json_decode($payload, true);
         if (!is_array($event)) {
-            $this->logEvent('tremendous_webhook_invalid_json', ['payload' => $payload]);
+            $this->logEvent('tremendous_webhook_invalid_json', [
+                'payload_preview' => mb_substr($payload, 0, 512),
+                'payload_length' => strlen($payload),
+            ]);
             http_response_code(400);
             echo 'invalid json';
             return;
@@ -429,7 +433,9 @@ class WebhookController extends Controller {
 
         $eventName = strtoupper(trim((string) ($event['event'] ?? $event['type'] ?? '')));
         if ($eventName === '') {
-            $this->logEvent('tremendous_webhook_missing_event', ['payload' => $event]);
+            $this->logEvent('tremendous_webhook_missing_event', [
+                'payload_keys' => array_keys($event),
+            ]);
             http_response_code(400);
             echo 'missing event';
             return;
@@ -507,34 +513,22 @@ class WebhookController extends Controller {
             return false;
         }
 
+        // Accept only a single signature value: "<hex>" or "sha256=<hex>".
+        if (str_contains($providedSignature, ',')) {
+            return false;
+        }
+
+        $candidate = strtolower($providedSignature);
+        if (str_starts_with($candidate, 'sha256=')) {
+            $candidate = substr($candidate, 7);
+        }
+        $candidate = trim($candidate);
+        if (!ctype_xdigit($candidate) || strlen($candidate) !== 64) {
+            return false;
+        }
+
         $expectedHex = hash_hmac('sha256', $payload, $secret);
-        $candidates = [$providedSignature];
-
-        foreach (explode(',', $providedSignature) as $part) {
-            $part = trim($part);
-            if ($part !== '') {
-                $candidates[] = $part;
-                $eqPos = strpos($part, '=');
-                if ($eqPos !== false) {
-                    $candidates[] = substr($part, $eqPos + 1);
-                }
-            }
-        }
-
-        foreach ($candidates as $candidate) {
-            $candidate = strtolower(trim((string) $candidate));
-            if (str_starts_with($candidate, 'sha256=')) {
-                $candidate = substr($candidate, 7);
-            }
-            if ($candidate === '') {
-                continue;
-            }
-            if (hash_equals($expectedHex, $candidate)) {
-                return true;
-            }
-        }
-
-        return false;
+        return hash_equals($expectedHex, $candidate);
     }
 
     private function extractTremendousOrderIdFromEvent(array $event): string {
@@ -550,7 +544,7 @@ class WebhookController extends Controller {
 
         foreach ($candidates as $candidate) {
             $value = trim((string) ($candidate ?? ''));
-            if ($value !== '') {
+            if ($value !== '' && preg_match('/^[A-Z0-9]{4,20}$/', $value) === 1) {
                 return $value;
             }
         }
@@ -564,8 +558,7 @@ class WebhookController extends Controller {
                 "SELECT id
                  FROM payouts
                  WHERE payout_method = 'tremendous'
-                   AND tremendous_order_id = ?
-                 LIMIT 20",
+                   AND tremendous_order_id = ?",
                 [$orderId]
             )->fetchAll();
 
@@ -612,8 +605,7 @@ class WebhookController extends Controller {
                 "SELECT id
                  FROM payouts
                  WHERE payout_method = 'tremendous'
-                   AND tremendous_order_id = ?
-                 LIMIT 20",
+                   AND tremendous_order_id = ?",
                 [$orderId]
             )->fetchAll();
 

@@ -42,6 +42,8 @@ class PayoutController extends Controller
                 'Stripe-Version: 2023-10-16'
             ],
             CURLOPT_HTTPGET => true,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
         ]);
 
         $response = curl_exec($ch);
@@ -492,7 +494,9 @@ class PayoutController extends Controller
                 'Stripe-Version: 2023-10-16',
                 'Idempotency-Key: ' . $idempotencyKey,
                 'Content-Type: application/x-www-form-urlencoded'
-            ]
+            ],
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
         ]);
 
         $response = curl_exec($ch);

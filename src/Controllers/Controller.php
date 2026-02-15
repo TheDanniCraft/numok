@@ -109,6 +109,19 @@ class Controller {
         string $externalId,
         string $message
     ): array {
+        $recipientName = trim($recipientName);
+        $recipientEmail = trim($recipientEmail);
+        if ($recipientName === '' || mb_strlen($recipientName) > 255) {
+            throw new \InvalidArgumentException('Invalid recipient name for Tremendous payout.');
+        }
+        if (
+            $recipientEmail === ''
+            || strlen($recipientEmail) > 320
+            || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)
+        ) {
+            throw new \InvalidArgumentException('Invalid recipient email for Tremendous payout.');
+        }
+
         $settings = $this->getSettings();
         $apiKey = trim((string) ($settings['tremendous_api_key'] ?? ''));
         if ($apiKey === '') {
@@ -159,6 +172,8 @@ class Controller {
             CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_SLASHES),
             CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_TIMEOUT => 45,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_HTTPHEADER => [
                 'Authorization: Bearer ' . $apiKey,
                 'Content-Type: application/json'
