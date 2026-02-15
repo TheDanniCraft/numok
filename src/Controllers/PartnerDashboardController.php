@@ -33,6 +33,9 @@ class PartnerDashboardController extends PartnerBaseController {
         
         // Get pending payouts
         $pendingPayouts = $this->getPendingPayouts($partnerId);
+        
+        // Get currently available payout balance
+        $payoutSummary = $this->getPayoutSummary($partnerId);
 
         $settings = $this->getSettings();
         $this->view('partner/dashboard/index', [
@@ -43,7 +46,8 @@ class PartnerDashboardController extends PartnerBaseController {
             'earnings_trends' => $earningsTrends,
             'program_performance' => $programPerformance,
             'recent_activities' => $recentActivities,
-            'pending_payouts' => $pendingPayouts
+            'pending_payouts' => $pendingPayouts,
+            'payout_summary' => $payoutSummary
         ]);
     }
 
@@ -243,5 +247,24 @@ class PartnerDashboardController extends PartnerBaseController {
              GROUP BY c.status",
             [$partnerId]
         )->fetchAll();
+    }
+
+    private function getPayoutSummary(int $partnerId): array {
+        $summary = Database::query(
+            "SELECT
+                COUNT(c.id) AS payable_count,
+                COALESCE(SUM(c.commission_amount), 0) AS payable_amount
+             FROM conversions c
+             JOIN partner_programs pp ON c.partner_program_id = pp.id
+             WHERE pp.partner_id = ?
+               AND c.status = 'payable'
+               AND c.payout_id IS NULL",
+            [$partnerId]
+        )->fetch();
+
+        return [
+            'payable_count' => (int) ($summary['payable_count'] ?? 0),
+            'payable_amount' => (float) ($summary['payable_amount'] ?? 0),
+        ];
     }
 }

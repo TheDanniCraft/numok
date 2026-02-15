@@ -163,20 +163,20 @@
                                             </p>
                                         </div>
 
-                                        <!-- Invoice ID / Number -->
+                                        <!-- Invoice Number -->
                                         <div class="mb-4">
-                                            <label for="invoice_number" class="block text-sm font-medium text-gray-700">Invoice ID</label>
+                                            <label for="invoice_number" class="block text-sm font-medium text-gray-700">Invoice Number</label>
                                             <input
                                                 type="text"
                                                 name="invoice_number"
                                                 id="invoice_number"
                                                 required
-                                                placeholder="e.g., INV12345"
+                                                placeholder="e.g., 0001 or INV-0001"
                                                 class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 
                                                     ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 
                                                     focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
                                             <p class="mt-1 text-sm text-gray-500">
-                                                Enter the invoice ID from your successful payment.
+                                                Enter your invoice number exactly as shown on the invoice.
                                             </p>
                                         </div>
 
