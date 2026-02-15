@@ -28,6 +28,9 @@ CREATE TABLE payouts (
   updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY partner_id (partner_id),
+  KEY idx_payouts_status_method_updated_at (status, payout_method, updated_at),
+  KEY idx_payouts_tremendous_order_id (tremendous_order_id),
+  KEY idx_payouts_method_status (payout_method, status),
   CONSTRAINT payouts_ibfk_1 FOREIGN KEY (partner_id) REFERENCES partners (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -37,6 +40,7 @@ ALTER TABLE conversions
   ADD COLUMN last_payout_failure_reason VARCHAR(255) DEFAULT NULL AFTER payout_id,
   ADD COLUMN last_payout_failed_at TIMESTAMP NULL DEFAULT NULL AFTER last_payout_failure_reason,
   ADD KEY idx_payout_id (payout_id),
+  ADD KEY idx_status_payout_id (status, payout_id),
   ADD CONSTRAINT conversions_ibfk_2
     FOREIGN KEY (payout_id) REFERENCES payouts (id) ON DELETE SET NULL;
 

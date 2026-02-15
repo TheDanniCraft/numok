@@ -50,6 +50,9 @@ CREATE TABLE `payouts` (
 
   PRIMARY KEY (`id`),
   KEY `partner_id` (`partner_id`),
+  KEY `idx_payouts_status_method_updated_at` (`status`,`payout_method`,`updated_at`),
+  KEY `idx_payouts_tremendous_order_id` (`tremendous_order_id`),
+  KEY `idx_payouts_method_status` (`payout_method`,`status`),
   CONSTRAINT `payouts_ibfk_1` FOREIGN KEY (`partner_id`) REFERENCES `partners` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -79,6 +82,7 @@ CREATE TABLE `conversions` (
   KEY `partner_program_id` (`partner_program_id`),
   KEY `idx_stripe_payment` (`stripe_payment_id`),
   KEY `idx_payout_id` (`payout_id`),
+  KEY `idx_status_payout_id` (`status`,`payout_id`),
   CONSTRAINT `conversions_ibfk_1` FOREIGN KEY (`partner_program_id`) REFERENCES `partner_programs` (`id`) ON DELETE CASCADE,
   CONSTRAINT `conversions_ibfk_2` FOREIGN KEY (`payout_id`) REFERENCES `payouts` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
