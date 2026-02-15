@@ -53,6 +53,7 @@ class ProgramsController extends Controller {
             'cookie_days' => intval($_POST['cookie_days'] ?? 30),
             'is_recurring' => isset($_POST['is_recurring']) ? 1 : 0,
             'reward_days' => intval($_POST['reward_days'] ?? 7),
+            'tremendous_campaign_id' => trim((string) ($_POST['tremendous_campaign_id'] ?? '')),
             'landing_page' => $_POST['landing_page'] ?? '',
             'status' => 'active',
             'is_private' => isset($_POST['is_private']) ? 1 : 0
@@ -153,6 +154,7 @@ class ProgramsController extends Controller {
             'cookie_days' => intval($_POST['cookie_days'] ?? 30),
             'is_recurring' => isset($_POST['is_recurring']) ? 1 : 0,
             'reward_days' => intval($_POST['reward_days'] ?? 7),
+            'tremendous_campaign_id' => trim((string) ($_POST['tremendous_campaign_id'] ?? '')),
             'landing_page' => $_POST['landing_page'] ?? '',
             'status' => $_POST['status'] ?? 'active',
             'is_private' => isset($_POST['is_private']) ? 1 : 0

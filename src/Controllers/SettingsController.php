@@ -70,7 +70,8 @@ class SettingsController extends Controller
                 }
 
                 foreach ([
-                    'min_payout_amount_stripe_customer_balance'
+                    'min_payout_amount_stripe_customer_balance',
+                    'min_payout_amount_tremendous'
                 ] as $minPayoutKey) {
                     if (array_key_exists($minPayoutKey, $_POST)) {
                         $rawValue = (string) ($_POST[$minPayoutKey] ?? '0');
@@ -82,16 +83,34 @@ class SettingsController extends Controller
                     }
                 }
 
-                if (array_key_exists('enabled_payout_methods', $_POST)) {
-                    $methods = $_POST['enabled_payout_methods'];
-                    if (!is_array($methods)) {
-                        $methods = [];
+                $methods = $_POST['enabled_payout_methods'] ?? [];
+                if (!is_array($methods)) {
+                    $methods = [];
+                }
+
+                $allowedMethods = ['stripe_customer_balance', 'tremendous'];
+                $methods = array_values(array_intersect($allowedMethods, $methods));
+
+                // Empty value is valid and means manual-only payouts.
+                $settings['enabled_payout_methods'] = implode(',', $methods);
+
+                foreach ([
+                    'tremendous_api_key',
+                ] as $tremendousKey) {
+                    if (array_key_exists($tremendousKey, $_POST)) {
+                        $settings[$tremendousKey] = trim((string) ($_POST[$tremendousKey] ?? ''));
                     }
+                }
 
-                    $allowedMethods = ['stripe_customer_balance'];
-                    $methods = array_values(array_intersect($allowedMethods, $methods));
-
-                    $settings['enabled_payout_methods'] = implode(',', $methods);
+                if (array_key_exists('tremendous_api_key', $settings)) {
+                    $tremendousApiKey = $settings['tremendous_api_key'];
+                    if (
+                        $tremendousApiKey !== ''
+                        && !str_starts_with($tremendousApiKey, 'TEST_')
+                        && !str_starts_with($tremendousApiKey, 'PROD_')
+                    ) {
+                        throw new \InvalidArgumentException('Tremendous API key must start with TEST_ or PROD_.');
+                    }
                 }
 
                 if (empty($settings)) {
@@ -102,7 +121,9 @@ class SettingsController extends Controller
                         'stripe_webhook_secret',
                         'min_payout_amount',
                         'min_payout_amount_stripe_customer_balance',
-                        'enabled_payout_methods'
+                        'min_payout_amount_tremendous',
+                        'enabled_payout_methods',
+                        'tremendous_api_key',
                     ] as $key) {
                         if (isset($currentSettings[$key])) {
                             $settings[$key] = $currentSettings[$key];

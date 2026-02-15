@@ -127,6 +127,19 @@ Control via environment variables:
 - `ENABLE_CONVERSION_CRON=true|false`
 - `CONVERSION_CRON_SCHEDULE="* * * * *"`
 
+### Tremendous Payout Sync Cron
+
+When Tremendous payouts are enabled, the app container also auto-configures:
+
+```bash
+0 * * * * /usr/local/bin/php /var/www/html/bin/sync-tremendous-payouts.php >> /var/log/numok-tremendous-sync.log 2>&1
+```
+
+Control via environment variables:
+- `ENABLE_TREMENDOUS_SYNC_CRON=true|false`
+- `TREMENDOUS_SYNC_CRON_SCHEDULE="0 * * * *"`
+- `RUN_TREMENDOUS_SYNC_ON_STARTUP=true|false` (runs one immediate sync during container boot)
+
 ### Health Monitoring
 - Database health checks every 10 seconds
 - Automatic restart on failure

@@ -394,4 +394,274 @@ class WebhookController extends Controller {
             'context' => is_string($data) ? null : json_encode($data)
         ]);
     }
+
+    public function tremendousWebhook(): void {
+        $payload = @file_get_contents('php://input');
+        if (!is_string($payload)) {
+            http_response_code(400);
+            echo 'invalid payload';
+            return;
+        }
+
+        $signature = $this->getTremendousSignatureHeader();
+        $secret = trim((string) $this->getSettingValue('tremendous_webhook_private_key'));
+        if ($secret === '') {
+            $this->logEvent('tremendous_webhook_missing_secret', ['signature' => $signature]);
+            http_response_code(503);
+            echo 'webhook secret not configured';
+            return;
+        }
+
+        if (!$this->isValidTremendousSignature($payload, $signature, $secret)) {
+            $this->logEvent('tremendous_webhook_invalid_signature', ['signature' => $signature]);
+            http_response_code(401);
+            echo 'invalid signature';
+            return;
+        }
+
+        $event = json_decode($payload, true);
+        if (!is_array($event)) {
+            $this->logEvent('tremendous_webhook_invalid_json', ['payload' => $payload]);
+            http_response_code(400);
+            echo 'invalid json';
+            return;
+        }
+
+        $eventName = strtoupper(trim((string) ($event['event'] ?? $event['type'] ?? '')));
+        if ($eventName === '') {
+            $this->logEvent('tremendous_webhook_missing_event', ['payload' => $event]);
+            http_response_code(400);
+            echo 'missing event';
+            return;
+        }
+
+        $orderId = $this->extractTremendousOrderIdFromEvent($event);
+        if ($orderId === '') {
+            $this->logEvent('tremendous_webhook_missing_order_id', ['event' => $eventName, 'payload' => $event]);
+            http_response_code(200);
+            echo 'ok';
+            return;
+        }
+
+        try {
+            switch ($eventName) {
+                case 'ORDERS.APPROVED':
+                    $this->applyTremendousWebhookPaid($orderId, $eventName);
+                    break;
+                case 'ORDERS.CANCELED':
+                    $this->applyTremendousWebhookTerminal($orderId, 'canceled', 'Tremendous order failed with status: CANCELED');
+                    break;
+                case 'ORDERS.FAILED':
+                    $this->applyTremendousWebhookTerminal($orderId, 'failed', 'Tremendous order failed with status: FAILED');
+                    break;
+                default:
+                    // Acknowledge unrelated events.
+                    break;
+            }
+        } catch (\Throwable $e) {
+            $this->logEvent('tremendous_webhook_processing_failed', [
+                'event' => $eventName,
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+            http_response_code(500);
+            echo 'processing failed';
+            return;
+        }
+
+        http_response_code(200);
+        echo 'ok';
+    }
+
+    private function getSettingValue(string $name): ?string {
+        $row = Database::query(
+            "SELECT value FROM settings WHERE name = ? LIMIT 1",
+            [$name]
+        )->fetch();
+
+        if (!$row) {
+            return null;
+        }
+
+        return (string) ($row['value'] ?? '');
+    }
+
+    private function getTremendousSignatureHeader(): string {
+        $candidates = [
+            $_SERVER['HTTP_TREMENDOUS_WEBHOOK_SIGNATURE'] ?? '',
+            $_SERVER['HTTP_X_TREMENDOUS_WEBHOOK_SIGNATURE'] ?? '',
+            $_SERVER['HTTP_TREMENDOUS_SIGNATURE'] ?? '',
+        ];
+        foreach ($candidates as $value) {
+            $value = trim((string) $value);
+            if ($value !== '') {
+                return $value;
+            }
+        }
+        return '';
+    }
+
+    private function isValidTremendousSignature(string $payload, string $providedSignature, string $secret): bool {
+        $providedSignature = trim($providedSignature);
+        if ($providedSignature === '') {
+            return false;
+        }
+
+        $expectedHex = hash_hmac('sha256', $payload, $secret);
+        $candidates = [$providedSignature];
+
+        foreach (explode(',', $providedSignature) as $part) {
+            $part = trim($part);
+            if ($part !== '') {
+                $candidates[] = $part;
+                $eqPos = strpos($part, '=');
+                if ($eqPos !== false) {
+                    $candidates[] = substr($part, $eqPos + 1);
+                }
+            }
+        }
+
+        foreach ($candidates as $candidate) {
+            $candidate = strtolower(trim((string) $candidate));
+            if (str_starts_with($candidate, 'sha256=')) {
+                $candidate = substr($candidate, 7);
+            }
+            if ($candidate === '') {
+                continue;
+            }
+            if (hash_equals($expectedHex, $candidate)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function extractTremendousOrderIdFromEvent(array $event): string {
+        $candidates = [
+            $event['payload']['resource']['id'] ?? null,
+            $event['payload']['order']['id'] ?? null,
+            $event['order']['id'] ?? null,
+            $event['data']['order']['id'] ?? null,
+            $event['data']['object']['id'] ?? null,
+            $event['order_id'] ?? null,
+            $event['payload']['order_id'] ?? null,
+        ];
+
+        foreach ($candidates as $candidate) {
+            $value = trim((string) ($candidate ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    private function applyTremendousWebhookPaid(string $orderId, string $eventName): void {
+        Database::transaction(function () use ($orderId, $eventName): void {
+            $payouts = Database::query(
+                "SELECT id
+                 FROM payouts
+                 WHERE payout_method = 'tremendous'
+                   AND tremendous_order_id = ?
+                 LIMIT 20",
+                [$orderId]
+            )->fetchAll();
+
+            foreach ($payouts as $row) {
+                $payoutId = (int) ($row['id'] ?? 0);
+                if ($payoutId <= 0) {
+                    continue;
+                }
+
+                $updated = Database::query(
+                    "UPDATE payouts
+                     SET status = 'paid',
+                         failure_reason = NULL
+                     WHERE id = ?
+                       AND status IN ('processing', 'pending_approval', 'pending_internal_payment_approval')",
+                    [$payoutId]
+                );
+                if ((int) $updated->rowCount() === 0) {
+                    continue;
+                }
+
+                Database::query(
+                    "UPDATE conversions
+                     SET status = 'paid',
+                         last_payout_failure_reason = NULL,
+                         last_payout_failed_at = NULL
+                     WHERE payout_id = ?
+                       AND status = 'payable'",
+                    [$payoutId]
+                );
+            }
+        });
+
+        $this->logEvent('tremendous_webhook_processed', [
+            'event' => $eventName,
+            'order_id' => $orderId,
+        ]);
+    }
+
+    private function applyTremendousWebhookTerminal(string $orderId, string $terminalStatus, string $failureReason): void {
+        $isCanceled = $terminalStatus === 'canceled';
+        Database::transaction(function () use ($orderId, $terminalStatus, $failureReason, $isCanceled): void {
+            $payouts = Database::query(
+                "SELECT id
+                 FROM payouts
+                 WHERE payout_method = 'tremendous'
+                   AND tremendous_order_id = ?
+                 LIMIT 20",
+                [$orderId]
+            )->fetchAll();
+
+            foreach ($payouts as $row) {
+                $payoutId = (int) ($row['id'] ?? 0);
+                if ($payoutId <= 0) {
+                    continue;
+                }
+
+                $updated = Database::query(
+                    "UPDATE payouts
+                     SET status = ?,
+                         failure_reason = ?
+                     WHERE id = ?
+                       AND status IN ('processing', 'pending_approval', 'pending_internal_payment_approval')",
+                    [$terminalStatus, $failureReason, $payoutId]
+                );
+                if ((int) $updated->rowCount() === 0) {
+                    continue;
+                }
+
+                if ($isCanceled) {
+                    Database::query(
+                        "UPDATE conversions
+                         SET payout_id = NULL,
+                             last_payout_failure_reason = NULL,
+                             last_payout_failed_at = NOW()
+                         WHERE payout_id = ?
+                           AND status = 'payable'",
+                        [$payoutId]
+                    );
+                } else {
+                    Database::query(
+                        "UPDATE conversions
+                         SET payout_id = NULL,
+                             last_payout_failure_reason = ?,
+                             last_payout_failed_at = NOW()
+                         WHERE payout_id = ?
+                           AND status = 'payable'",
+                        [$failureReason, $payoutId]
+                    );
+                }
+            }
+        });
+
+        $this->logEvent('tremendous_webhook_processed', [
+            'event' => strtoupper($terminalStatus),
+            'order_id' => $orderId,
+        ]);
+    }
 }

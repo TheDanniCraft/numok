@@ -2,6 +2,7 @@
     <?php
     $enabledPayoutMethods = array_filter(array_map('trim', explode(',', (string)($settings['enabled_payout_methods'] ?? ''))));
     $adminStripeEnabled = in_array('stripe_customer_balance', $enabledPayoutMethods, true);
+    $adminTremendousEnabled = in_array('tremendous', $enabledPayoutMethods, true);
     ?>
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div class="sm:flex sm:items-center">
@@ -46,6 +47,129 @@
                 </div>
             </div>
             <?php unset($_SESSION['error']); ?>
+        <?php endif; ?>
+
+        <?php if (isset($_SESSION['warning'])): ?>
+            <div class="rounded-md bg-amber-50 p-4 mt-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-amber-800"><?= htmlspecialchars($_SESSION['warning']) ?></p>
+                    </div>
+                </div>
+            </div>
+            <?php unset($_SESSION['warning']); ?>
+        <?php endif; ?>
+
+        <?php if (!empty($failed_payout_alerts)): ?>
+            <div class="rounded-md bg-red-50 p-4 mt-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM10 5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3 w-full">
+                        <p class="text-sm font-medium text-red-800">
+                            Failed Tremendous payouts detected. Please review failed payouts.
+                        </p>
+                        <?php if (($failed_insufficient_summary['failed_count'] ?? 0) > 0): ?>
+                            <p class="mt-1 text-xs font-medium text-red-700">
+                                Insufficient-funds failures:
+                                <?= number_format((int) ($failed_insufficient_summary['failed_count'] ?? 0)) ?>
+                                payout<?= ((int) ($failed_insufficient_summary['failed_count'] ?? 0)) === 1 ? '' : 's' ?>,
+                                $<?= number_format((float) ($failed_insufficient_summary['failed_amount'] ?? 0), 2) ?> total.
+                            </p>
+                        <?php endif; ?>
+                        <ul class="mt-2 list-disc pl-5 text-xs text-red-700 space-y-1">
+                            <?php foreach ($failed_payout_alerts as $failedPayout): ?>
+                                <li>
+                                    <?= htmlspecialchars($failedPayout['partner_name'] ?? ('Partner #' . ($failedPayout['partner_id'] ?? ''))) ?>:
+                                    $<?= number_format((float) ($failedPayout['amount'] ?? 0), 2) ?>
+                                    (<?= date('M j, Y g:i A', strtotime((string) ($failedPayout['created_at'] ?? 'now'))) ?>)
+                                    <?php if (!empty($failedPayout['failure_reason'])): ?>
+                                        - <?= htmlspecialchars((string) $failedPayout['failure_reason']) ?>
+                                    <?php endif; ?>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!empty($pending_payout_alerts)): ?>
+            <div class="rounded-md bg-amber-50 p-4 mt-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM10 5a.75.75 0 01.75.75v4a.75.75 0 01-1.5 0v-4A.75.75 0 0110 5zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3 w-full">
+                        <p class="text-sm font-medium text-amber-800">
+                            Pending Tremendous payouts: review in Tremendous dashboard and approve/reject.
+                        </p>
+                        <p class="mt-1 text-xs text-amber-700">
+                            Pending payouts:
+                            <?= number_format((int) ($pending_summary['pending_count'] ?? 0)) ?>
+                            payout<?= ((int) ($pending_summary['pending_count'] ?? 0)) === 1 ? '' : 's' ?>,
+                            $<?= number_format((float) ($pending_summary['pending_amount'] ?? 0), 2) ?> total.
+                        </p>
+                        <ul class="mt-2 list-disc pl-5 text-xs text-amber-700 space-y-1">
+                            <?php foreach ($pending_payout_alerts as $pendingPayout): ?>
+                                <li>
+                                    <?= htmlspecialchars($pendingPayout['partner_name'] ?? ('Partner #' . ($pendingPayout['partner_id'] ?? ''))) ?>:
+                                    $<?= number_format((float) ($pendingPayout['amount'] ?? 0), 2) ?>
+                                    (<?= date('M j, Y g:i A', strtotime((string) ($pendingPayout['created_at'] ?? 'now'))) ?>)
+                                    <?php if (!empty($pendingPayout['tremendous_order_id'])): ?>
+                                        - Order: <?= htmlspecialchars((string) $pendingPayout['tremendous_order_id']) ?>
+                                    <?php endif; ?>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!empty($internal_pending_payout_alerts)): ?>
+            <div class="rounded-md bg-amber-50 p-4 mt-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM10 5a.75.75 0 01.75.75v4a.75.75 0 01-1.5 0v-4A.75.75 0 0110 5zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3 w-full">
+                        <p class="text-sm font-medium text-amber-800">
+                            One or more payouts were flagged by Tremendous and are awaiting Tremendous review.
+                        </p>
+                        <p class="mt-1 text-xs text-amber-700">
+                            Flagged payouts:
+                            <?= number_format((int) ($internal_pending_summary['pending_count'] ?? 0)) ?>
+                            payout<?= ((int) ($internal_pending_summary['pending_count'] ?? 0)) === 1 ? '' : 's' ?>,
+                            $<?= number_format((float) ($internal_pending_summary['pending_amount'] ?? 0), 2) ?> total.
+                        </p>
+                        <ul class="mt-2 list-disc pl-5 text-xs text-amber-700 space-y-1">
+                            <?php foreach ($internal_pending_payout_alerts as $pendingPayout): ?>
+                                <li>
+                                    <?= htmlspecialchars($pendingPayout['partner_name'] ?? ('Partner #' . ($pendingPayout['partner_id'] ?? ''))) ?>:
+                                    $<?= number_format((float) ($pendingPayout['amount'] ?? 0), 2) ?>
+                                    (<?= date('M j, Y g:i A', strtotime((string) ($pendingPayout['created_at'] ?? 'now'))) ?>)
+                                    <?php if (!empty($pendingPayout['tremendous_order_id'])): ?>
+                                        - Order: <?= htmlspecialchars((string) $pendingPayout['tremendous_order_id']) ?>
+                                    <?php endif; ?>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                </div>
+            </div>
         <?php endif; ?>
 
         <!-- Filter Form -->
@@ -127,6 +251,13 @@
         <?php else: ?>
             <div class="mt-8 space-y-3 lg:hidden">
                 <?php foreach ($conversions as $conversion): ?>
+                    <?php
+                    $payoutFailureReason = trim((string) ($conversion['last_payout_failure_reason'] ?? ''));
+                    $payoutWasCanceled = ($payoutFailureReason === '')
+                        && !empty($conversion['last_payout_failed_at'])
+                        && ($conversion['status'] ?? '') === 'payable'
+                        && empty($conversion['payout_id']);
+                    ?>
                     <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                         <div class="flex items-start justify-between gap-3">
                             <div>
@@ -165,6 +296,14 @@
                             <div class="text-right text-gray-900">$<?= number_format($conversion['commission_amount'] ?? 0, 2) ?></div>
                         </div>
 
+                        <?php if ($payoutWasCanceled): ?>
+                            <div class="mt-2">
+                                <span class="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+                                    Previous payout canceled
+                                </span>
+                            </div>
+                        <?php endif; ?>
+
                         <?php if ($conversion['status'] === 'pending' || $conversion['status'] === 'payable'): ?>
                             <div class="mt-4 flex items-center justify-end gap-2">
                                 <?php if ($conversion['status'] === 'pending'): ?>
@@ -197,12 +336,14 @@
                                     </form>
                                 <?php endif; ?>
 
-                                <?php if ($conversion['status'] === 'payable'): ?>
+                                <?php if ($conversion['status'] === 'payable' && empty($conversion['payout_id'])): ?>
                                     <button
                                         type="button"
                                         class="open-payout-modal inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-blue-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-blue-50"
                                         data-conversion-id="<?= (int) $conversion['id'] ?>"
                                         data-has-stripe="<?= !empty($conversion['stripe_customer_id']) ? '1' : '0' ?>"
+                                        data-has-email="<?= !empty($conversion['partner_email']) ? '1' : '0' ?>"
+                                        data-has-tremendous-campaign="<?= !empty($conversion['program_tremendous_campaign_id']) ? '1' : '0' ?>"
                                         data-partner-name="<?= htmlspecialchars($conversion['partner_name'] ?? '', ENT_QUOTES) ?>"
                                         data-commission="<?= number_format((float) ($conversion['commission_amount'] ?? 0), 2, '.', '') ?>">
                                         Review Payout
@@ -255,6 +396,13 @@
                             </thead>
                             <tbody class="divide-y divide-gray-200 bg-white">
                                 <?php foreach ($conversions as $conversion): ?>
+                                    <?php
+                                    $payoutFailureReason = trim((string) ($conversion['last_payout_failure_reason'] ?? ''));
+                                    $payoutWasCanceled = ($payoutFailureReason === '')
+                                        && !empty($conversion['last_payout_failed_at'])
+                                        && ($conversion['status'] ?? '') === 'payable'
+                                        && empty($conversion['payout_id']);
+                                    ?>
                                     <tr>
                                         <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-gray-900 sm:pl-6">
                                             <?= date('M j, Y', strtotime($conversion['created_at'] ?? '')) ?>
@@ -303,10 +451,20 @@
                                         </td>
                                         <td class="px-3 py-4 text-sm text-gray-500 max-w-[220px]">
                                             <?php if (!empty($conversion['payout_method'])): ?>
-                                                <?php if ($conversion['payout_method'] === 'stripe_customer_balance'): ?>
+                                                <?php if ($conversion['payout_method'] === 'stripe_customer_balance' || !empty($conversion['stripe_customer_balance_transaction_id'])): ?>
                                                     <span class="inline-flex items-center rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700">
                                                         Stripe Customer Balance
                                                     </span>
+                                                <?php elseif ($conversion['payout_method'] === 'tremendous' || !empty($conversion['tremendous_order_id'])): ?>
+                                                    <?php if (in_array((string) ($conversion['payout_status'] ?? ''), ['processing', 'pending_approval', 'pending_internal_payment_approval'], true)): ?>
+                                                        <span class="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+                                                            Tremendous (Pending Approval)
+                                                        </span>
+                                                    <?php else: ?>
+                                                        <span class="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+                                                            Tremendous
+                                                        </span>
+                                                    <?php endif; ?>
                                                 <?php elseif ($conversion['payout_method'] === 'stripe_transfer'): ?>
                                                     <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
                                                         Stripe Transfer
@@ -321,6 +479,22 @@
                                                         <?= htmlspecialchars($conversion['stripe_customer_balance_transaction_id']) ?>
                                                     </div>
                                                 <?php endif; ?>
+                                                <?php if (!empty($conversion['tremendous_order_id'])): ?>
+                                                    <div class="text-xs font-mono mt-1 text-gray-400 break-all">
+                                                        <?= htmlspecialchars($conversion['tremendous_order_id']) ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                            <?php elseif ($payoutFailureReason !== '' && ($conversion['status'] ?? '') === 'payable'): ?>
+                                                <span class="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
+                                                    PAYOUT FAILED
+                                                </span>
+                                                <div class="text-xs mt-1 text-red-600 break-words" title="<?= htmlspecialchars($payoutFailureReason) ?>">
+                                                    <?= htmlspecialchars($payoutFailureReason) ?>
+                                                </div>
+                                            <?php elseif ($payoutWasCanceled): ?>
+                                                <span class="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+                                                    Payout was canceled
+                                                </span>
                                             <?php else: ?>
                                                 <span class="text-gray-400">-</span>
                                             <?php endif; ?>
@@ -359,7 +533,7 @@
                                                     </form>
                                                 <?php endif; ?>
 
-                                                <?php if ($conversion['status'] === 'payable'): ?>
+                                                <?php if ($conversion['status'] === 'payable' && empty($conversion['payout_id'])): ?>
                                                     <button
                                                         type="button"
                                                         title="Review payout"
@@ -367,6 +541,8 @@
                                                         class="open-payout-modal inline-flex items-center justify-center rounded-md bg-white p-2 text-blue-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-blue-50"
                                                         data-conversion-id="<?= (int) $conversion['id'] ?>"
                                                         data-has-stripe="<?= !empty($conversion['stripe_customer_id']) ? '1' : '0' ?>"
+                                                        data-has-email="<?= !empty($conversion['partner_email']) ? '1' : '0' ?>"
+                                                        data-has-tremendous-campaign="<?= !empty($conversion['program_tremendous_campaign_id']) ? '1' : '0' ?>"
                                                         data-partner-name="<?= htmlspecialchars($conversion['partner_name'] ?? '', ENT_QUOTES) ?>"
                                                         data-commission="<?= number_format((float) ($conversion['commission_amount'] ?? 0), 2, '.', '') ?>">
                                                         <svg class="h-4 w-4 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
@@ -406,8 +582,14 @@
                         <?php if ($adminStripeEnabled): ?>
                             <option value="stripe_customer_balance">Stripe Customer Balance</option>
                         <?php endif; ?>
+                        <?php if ($adminTremendousEnabled): ?>
+                            <option value="tremendous">Tremendous</option>
+                        <?php endif; ?>
                         <option value="manual">Manual (mark as paid only)</option>
                     </select>
+                    <p id="adminPayoutSourceDescription" class="mt-2 text-xs text-gray-600">
+                        Manual: marks conversions as paid without sending money from the platform.
+                    </p>
                 </div>
                 <p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
                     Process payouts only after explicit partner request or approval.
@@ -443,11 +625,26 @@ document.addEventListener('DOMContentLoaded', function () {
     const payoutForm = document.getElementById('adminPayoutForm');
     const partnerLabel = document.getElementById('adminPayoutPartner');
     const amountLabel = document.getElementById('adminPayoutAmount');
+    const sourceDescription = document.getElementById('adminPayoutSourceDescription');
     const triggerButtons = document.querySelectorAll('.open-payout-modal');
 
-    if (!modal || !backdrop || !cancelBtn || !submitBtn || !sourceSelect || !sourceInput || !conversionInput || !payoutForm || !partnerLabel || !amountLabel) {
+    if (!modal || !backdrop || !cancelBtn || !submitBtn || !sourceSelect || !sourceInput || !conversionInput || !payoutForm || !partnerLabel || !amountLabel || !sourceDescription) {
         return;
     }
+
+    const updateSourceDescription = function () {
+        switch (sourceSelect.value) {
+            case 'stripe_customer_balance':
+                sourceDescription.textContent = 'Stripe Customer Balance: credits the partner\'s Stripe customer balance.';
+                break;
+            case 'tremendous':
+                sourceDescription.textContent = 'Tremendous: sends a Tremendous reward to the partner email.';
+                break;
+            default:
+                sourceDescription.textContent = 'Manual: marks conversions as paid without sending money from the platform.';
+                break;
+        }
+    };
 
     const closeModal = function () {
         modal.classList.add('hidden');
@@ -457,6 +654,8 @@ document.addEventListener('DOMContentLoaded', function () {
         button.addEventListener('click', function () {
             const conversionId = button.getAttribute('data-conversion-id') || '';
             const hasStripe = button.getAttribute('data-has-stripe') === '1';
+            const hasEmail = button.getAttribute('data-has-email') === '1';
+            const hasTremendousCampaign = button.getAttribute('data-has-tremendous-campaign') === '1';
             const partnerName = button.getAttribute('data-partner-name') || '-';
             const commission = button.getAttribute('data-commission') || '0.00';
 
@@ -467,6 +666,10 @@ document.addEventListener('DOMContentLoaded', function () {
             const stripeOption = sourceSelect.querySelector('option[value="stripe_customer_balance"]');
             if (stripeOption) {
                 stripeOption.disabled = !hasStripe;
+            }
+            const tremendousOption = sourceSelect.querySelector('option[value="tremendous"]');
+            if (tremendousOption) {
+                tremendousOption.disabled = !hasEmail || !hasTremendousCampaign;
             }
 
             sourceSelect.value = 'manual';
@@ -481,6 +684,7 @@ document.addEventListener('DOMContentLoaded', function () {
             submitBtn.disabled = false;
             submitBtn.classList.remove('opacity-70', 'cursor-not-allowed');
             sourceInput.value = sourceSelect.value;
+            updateSourceDescription();
 
             modal.classList.remove('hidden');
         });
@@ -488,6 +692,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     sourceSelect.addEventListener('change', function () {
         sourceInput.value = sourceSelect.value;
+        updateSourceDescription();
     });
 
     cancelBtn.addEventListener('click', closeModal);

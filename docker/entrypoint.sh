@@ -36,6 +36,10 @@ chown -R www-data:www-data "$UPLOADS_DIR" "$TRACKING_DIR" || true
 : "${DB_PASS:=change_me_app_2025}"
 : "${ENABLE_CONVERSION_CRON:=true}"
 : "${CONVERSION_CRON_SCHEDULE:=* * * * *}"
+: "${RUN_TREMENDOUS_SYNC_ON_STARTUP:=true}"
+: "${ENABLE_TREMENDOUS_SYNC_CRON:=true}"
+: "${TREMENDOUS_SYNC_CRON_SCHEDULE:=0 * * * *}"
+START_CRON=false
 
 # Allow optional one-time DB bootstrap via RUN_MIGRATIONS=true
 if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
@@ -95,6 +99,17 @@ if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
   fi
 fi
 
+# Optionally run one immediate Tremendous reconciliation/sync at startup.
+if [ "${RUN_TREMENDOUS_SYNC_ON_STARTUP}" = "true" ]; then
+  echo "[entrypoint] Running Tremendous reconciliation sync on startup..."
+  if [ -x /usr/local/bin/php ]; then
+    /usr/local/bin/php "$APP_ROOT/bin/sync-tremendous-payouts.php" >> /var/log/numok-tremendous-sync.log 2>&1 || \
+      echo "[entrypoint] Warning: startup Tremendous sync failed (continuing)."
+  else
+    echo "[entrypoint] Warning: php binary not found for startup Tremendous sync."
+  fi
+fi
+
 # Configure and start cron job for conversion promotion
 if [ "${ENABLE_CONVERSION_CRON}" = "true" ]; then
   CRON_FILE="/etc/cron.d/numok-promote"
@@ -105,6 +120,23 @@ if [ "${ENABLE_CONVERSION_CRON}" = "true" ]; then
   chmod 0644 "$CRON_FILE"
   touch /var/log/numok-promote.log
 
+  START_CRON=true
+fi
+
+# Configure and start cron job for Tremendous payout status sync
+if [ "${ENABLE_TREMENDOUS_SYNC_CRON}" = "true" ]; then
+  CRON_FILE="/etc/cron.d/numok-tremendous-sync"
+  CRON_CMD="/usr/local/bin/php $APP_ROOT/bin/sync-tremendous-payouts.php >> /var/log/numok-tremendous-sync.log 2>&1"
+
+  echo "[entrypoint] Configuring Tremendous payout sync cron: ${TREMENDOUS_SYNC_CRON_SCHEDULE}"
+  printf "%s root %s\n" "$TREMENDOUS_SYNC_CRON_SCHEDULE" "$CRON_CMD" > "$CRON_FILE"
+  chmod 0644 "$CRON_FILE"
+  touch /var/log/numok-tremendous-sync.log
+
+  START_CRON=true
+fi
+
+if [ "${START_CRON}" = "true" ]; then
   if command -v service >/dev/null 2>&1; then
     service cron start >/dev/null 2>&1 || cron
   else

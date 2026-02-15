@@ -39,6 +39,7 @@ class PartnerEarningsController extends PartnerBaseController {
 
         // Get payout account status
         $payoutAccount = $this->getPayoutAccount($partnerId);
+        $tremendousPayoutEligibility = $this->getTremendousPayoutEligibility($partnerId);
         
         // Calculate pagination
         $totalPages = ceil($totalCount / $perPage);
@@ -52,6 +53,7 @@ class PartnerEarningsController extends PartnerBaseController {
             'programs' => $programs,
             'monthly_earnings' => $monthlyEarnings,
             'payout_account' => $payoutAccount,
+            'tremendous_payout_eligibility' => $tremendousPayoutEligibility,
             'filters' => [
                 'status' => $status,
                 'program' => $program,
@@ -97,10 +99,10 @@ class PartnerEarningsController extends PartnerBaseController {
                 COALESCE(SUM(c.commission_amount), 0) as total_commission,
                 COALESCE(AVG(c.commission_amount), 0) as avg_commission,
                 COUNT(CASE WHEN c.status = 'pending' THEN 1 END) as pending_count,
-                COUNT(CASE WHEN c.status = 'payable' THEN 1 END) as payable_count,
+                COUNT(CASE WHEN c.status = 'payable' AND c.payout_id IS NULL THEN 1 END) as payable_count,
                 COUNT(CASE WHEN c.status = 'paid' THEN 1 END) as paid_count,
                 COALESCE(SUM(CASE WHEN c.status = 'pending' THEN c.commission_amount END), 0) as pending_amount,
-                COALESCE(SUM(CASE WHEN c.status = 'payable' THEN c.commission_amount END), 0) as payable_amount,
+                COALESCE(SUM(CASE WHEN c.status = 'payable' AND c.payout_id IS NULL THEN c.commission_amount END), 0) as payable_amount,
                 COALESCE(SUM(CASE WHEN c.status = 'paid' THEN c.commission_amount END), 0) as paid_amount
              FROM conversions c
              JOIN partner_programs pp ON c.partner_program_id = pp.id
@@ -227,12 +229,15 @@ class PartnerEarningsController extends PartnerBaseController {
 
     private function getPayoutAccount(int $partnerId): array {
         $partner = Database::query(
-            "SELECT stripe_customer_id FROM partners WHERE id = ? LIMIT 1",
+            "SELECT stripe_customer_id, email, contact_name, company_name FROM partners WHERE id = ? LIMIT 1",
             [$partnerId]
         )->fetch();
 
         return [
             'stripe_customer_id' => $partner['stripe_customer_id'] ?? null,
+            'email' => $partner['email'] ?? null,
+            'contact_name' => $partner['contact_name'] ?? null,
+            'company_name' => $partner['company_name'] ?? null,
             'is_linked' => !empty($partner['stripe_customer_id'])
         ];
     }
@@ -270,4 +275,32 @@ class PartnerEarningsController extends PartnerBaseController {
             'payable_preview_ids' => $previewIds,
         ];
     }
-} 
+
+    private function getTremendousPayoutEligibility(int $partnerId): array
+    {
+        $row = Database::query(
+            "SELECT
+                COUNT(*) AS payable_count,
+                SUM(CASE WHEN TRIM(COALESCE(p.tremendous_campaign_id, '')) = '' THEN 1 ELSE 0 END) AS missing_campaign_count,
+                COUNT(DISTINCT NULLIF(TRIM(COALESCE(p.tremendous_campaign_id, '')), '')) AS distinct_campaign_count
+             FROM conversions c
+             JOIN partner_programs pp ON c.partner_program_id = pp.id
+             JOIN programs p ON pp.program_id = p.id
+             WHERE pp.partner_id = ?
+               AND c.status = 'payable'
+               AND c.payout_id IS NULL",
+            [$partnerId]
+        )->fetch() ?: [];
+
+        $payableCount = (int) ($row['payable_count'] ?? 0);
+        $missingCampaignCount = (int) ($row['missing_campaign_count'] ?? 0);
+        $distinctCampaignCount = (int) ($row['distinct_campaign_count'] ?? 0);
+
+        return [
+            'is_eligible' => $payableCount > 0 && $missingCampaignCount === 0 && $distinctCampaignCount === 1,
+            'payable_count' => $payableCount,
+            'missing_campaign_count' => $missingCampaignCount,
+            'distinct_campaign_count' => $distinctCampaignCount,
+        ];
+    }
+}

@@ -88,6 +88,7 @@ $routes = [
 
     // Webhook routes
     'webhook/stripe' => ['WebhookController', 'stripeWebhook'],
+    'webhook/tremendous' => ['WebhookController', 'tremendousWebhook'],
 ];
 
 // Check if route exists or matches a pattern

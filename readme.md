@@ -108,6 +108,14 @@ Set up a cron job to automatically move matured conversions from `pending` to `p
 
 Adjust PHP binary/path as needed for your server.
 
+### 5.2 Tremendous Payout Sync Cron (Required if Tremendous is enabled)
+
+Set up a cron job to sync Tremendous processing orders (`pending approval`, etc.) and finalize payouts:
+
+```bash
+0 * * * * /usr/bin/php /path/to/numok/bin/sync-tremendous-payouts.php >> /var/log/numok-tremendous-sync.log 2>&1
+```
+
 ### 6\. Web Server Configuration
 
 #### Apache
