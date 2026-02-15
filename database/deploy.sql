@@ -142,6 +142,7 @@ CREATE TABLE `partners` (
   `password` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `company_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `contact_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `stripe_customer_id` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `status` enum('pending','active','rejected','suspended') COLLATE utf8mb4_unicode_ci DEFAULT 'pending',
   `payment_email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,

@@ -100,7 +100,12 @@ class SettingsController extends Controller
                     'tremendous_api_key',
                 ] as $tremendousKey) {
                     if (array_key_exists($tremendousKey, $_POST)) {
-                        $settings[$tremendousKey] = trim((string) ($_POST[$tremendousKey] ?? ''));
+                        $submittedValue = trim((string) ($_POST[$tremendousKey] ?? ''));
+                        if ($submittedValue === '' && isset($currentSettings[$tremendousKey])) {
+                            $settings[$tremendousKey] = (string) $currentSettings[$tremendousKey];
+                        } else {
+                            $settings[$tremendousKey] = $submittedValue;
+                        }
                     }
                 }
 

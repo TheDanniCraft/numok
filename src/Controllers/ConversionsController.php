@@ -680,6 +680,10 @@ class ConversionsController extends Controller {
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => $payload,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_HTTPHEADER => [
                 'Authorization: Bearer ' . $stripeApiKey,
                 'Stripe-Version: 2023-10-16',
@@ -756,56 +760,6 @@ class ConversionsController extends Controller {
         }
 
         return 'pending_approval';
-    }
-
-    private function recordFailedPayoutAttempt(
-        int $partnerId,
-        float $amount,
-        string $payoutMethod,
-        string $reason,
-        array $conversionIds = [],
-        string $payoutStatus = 'failed'
-    ): void {
-        try {
-            $reason = trim($reason);
-            if ($reason === '') {
-                $reason = 'Unknown payout failure.';
-            }
-            $reason = mb_substr($reason, 0, 255);
-            if (!in_array($payoutStatus, ['failed', 'canceled'], true)) {
-                $payoutStatus = 'failed';
-            }
-            Database::insert('payouts', [
-                'partner_id' => $partnerId,
-                'stripe_customer_balance_transaction_id' => null,
-                'tremendous_order_id' => null,
-                'payout_method' => $payoutMethod,
-                'amount' => round($amount, 2),
-                'status' => $payoutStatus,
-                'failure_reason' => $reason
-            ]);
-
-            if (!empty($conversionIds)) {
-                $placeholders = implode(',', array_fill(0, count($conversionIds), '?'));
-                if ($payoutStatus === 'failed') {
-                    Database::query(
-                        "UPDATE conversions
-                         SET last_payout_failure_reason = ?, last_payout_failed_at = NOW()
-                         WHERE id IN ({$placeholders})",
-                        array_merge([$reason], array_map(static fn($id): int => (int) $id, $conversionIds))
-                    );
-                } else {
-                    Database::query(
-                        "UPDATE conversions
-                         SET last_payout_failure_reason = NULL, last_payout_failed_at = NOW()
-                         WHERE id IN ({$placeholders})",
-                        array_map(static fn($id): int => (int) $id, $conversionIds)
-                    );
-                }
-            }
-        } catch (\Exception $logError) {
-            error_log('Failed to record failed payout attempt: ' . $logError->getMessage());
-        }
     }
 
     private function createSuccessfulPayout(

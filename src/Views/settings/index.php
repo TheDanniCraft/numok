@@ -318,9 +318,9 @@
                                                     type="password"
                                                     name="tremendous_api_key"
                                                     id="tremendous_api_key"
-                                                    value="<?= htmlspecialchars($settings['tremendous_api_key'] ?? '') ?>"
+                                                    value=""
                                                     class="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
-                                                <p class="mt-1 text-xs text-gray-500">Enter your Tremendous API key.</p>
+                                                <p class="mt-1 text-xs text-gray-500">Enter your Tremendous API key. Leave blank to keep the current key.</p>
                                             </div>
                                             <div>
                                                 <p class="mt-1 text-xs text-gray-500">Tremendous payouts use your account balance funding source.</p>
