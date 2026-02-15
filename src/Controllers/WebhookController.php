@@ -452,6 +452,7 @@ class WebhookController extends Controller {
         try {
             switch ($eventName) {
                 case 'ORDERS.APPROVED':
+                case 'ORDERS.EXECUTED':
                     $this->applyTremendousWebhookPaid($orderId, $eventName);
                     break;
                 case 'ORDERS.CANCELED':
