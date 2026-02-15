@@ -105,7 +105,7 @@
                                     <ul class="list-disc pl-5 space-y-2">
                                         <li>Use a strong, unique password</li>
                                         <li>Never share your login credentials</li>
-                                        <li>Keep your payment email up to date</li>
+                                        <li>Keep your account email up to date for payouts</li>
                                         <li>Review your account activity regularly</li>
                                     </ul>
                                 </div>

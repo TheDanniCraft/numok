@@ -83,16 +83,18 @@ class SettingsController extends Controller
                     }
                 }
 
-                $methods = $_POST['enabled_payout_methods'] ?? [];
-                if (!is_array($methods)) {
-                    $methods = [];
+                if (array_key_exists('enabled_payout_methods', $_POST)) {
+                    $methods = $_POST['enabled_payout_methods'];
+                    if (!is_array($methods)) {
+                        $methods = [];
+                    }
+
+                    $allowedMethods = ['stripe_customer_balance', 'tremendous'];
+                    $methods = array_values(array_intersect($allowedMethods, $methods));
+
+                    // Empty value is valid and means manual-only payouts.
+                    $settings['enabled_payout_methods'] = implode(',', $methods);
                 }
-
-                $allowedMethods = ['stripe_customer_balance', 'tremendous'];
-                $methods = array_values(array_intersect($allowedMethods, $methods));
-
-                // Empty value is valid and means manual-only payouts.
-                $settings['enabled_payout_methods'] = implode(',', $methods);
 
                 foreach ([
                     'tremendous_api_key',
