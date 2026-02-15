@@ -52,8 +52,7 @@ CREATE TABLE `payouts` (
   KEY `partner_id` (`partner_id`),
   KEY `idx_payouts_status_method_updated_at` (`status`,`payout_method`,`updated_at`),
   KEY `idx_payouts_tremendous_order_id` (`tremendous_order_id`),
-  KEY `idx_payouts_method_status` (`payout_method`,`status`),
-  CONSTRAINT `payouts_ibfk_1` FOREIGN KEY (`partner_id`) REFERENCES `partners` (`id`) ON DELETE CASCADE
+  KEY `idx_payouts_method_status` (`payout_method`,`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
@@ -150,6 +149,9 @@ CREATE TABLE `partners` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `payouts`
+ADD CONSTRAINT `payouts_ibfk_1` FOREIGN KEY (`partner_id`) REFERENCES `partners` (`id`) ON DELETE CASCADE;
 
 # Dump of table programs
 # ------------------------------------------------------------

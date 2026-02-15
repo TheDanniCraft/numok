@@ -230,6 +230,14 @@ class Controller {
     {
         $prefix = preg_replace('/[^A-Za-z0-9_-]/', '-', trim($prefix)) ?: 'numok-payout';
         $normalizedRetryToken = trim($retryToken) !== '' ? trim($retryToken) : '0';
+        if (strlen($normalizedRetryToken) > 16) {
+            $normalizedRetryToken = substr($normalizedRetryToken, -16);
+        }
+
+        if (strlen($prefix) > 32) {
+            $prefix = substr($prefix, 0, 32);
+        }
+
         $hash = substr(sha1($prefix . '|' . $normalizedRetryToken), 0, 20);
         return $prefix . '-r' . $normalizedRetryToken . '-' . $hash;
     }

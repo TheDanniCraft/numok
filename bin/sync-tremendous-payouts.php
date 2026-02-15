@@ -18,7 +18,7 @@ class SkipSyncException extends RuntimeException {}
 
 /**
  * Syncs Tremendous payouts that are currently in pending statuses.
- * - EXECUTED => payout paid + linked conversions paid
+ * - APPROVED / EXECUTED => payout paid + linked conversions paid
  * - FAILED => payout failed + linked conversions released back to payable
  * - CANCELED => payout canceled + linked conversions released back to payable
  */
@@ -282,6 +282,52 @@ try {
         syncLog('Warning: webhook ensure failed, continuing payout reconciliation. Error: ' . $webhookError->getMessage());
     }
 
+    // Recover abandoned processing payouts where provider call never produced an order id.
+    $staleProcessing = Database::query(
+        "SELECT id
+         FROM payouts
+         WHERE payout_method = 'tremendous'
+           AND status = 'processing'
+           AND (tremendous_order_id IS NULL OR tremendous_order_id = '')
+           AND updated_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+         ORDER BY updated_at ASC
+         LIMIT 250"
+    )->fetchAll();
+
+    foreach ($staleProcessing as $staleRow) {
+        $stalePayoutId = (int) ($staleRow['id'] ?? 0);
+        if ($stalePayoutId <= 0) {
+            continue;
+        }
+
+        $failureReason = 'Tremendous payout failed: no order ID was recorded.';
+        Database::transaction(function () use ($stalePayoutId, $failureReason): void {
+            Database::update(
+                'payouts',
+                [
+                    'status' => 'failed',
+                    'failure_reason' => $failureReason,
+                ],
+                'id = ?',
+                [$stalePayoutId]
+            );
+
+            Database::query(
+                "UPDATE conversions
+                 SET payout_id = NULL,
+                     last_payout_failure_reason = ?,
+                     last_payout_failed_at = NOW()
+                 WHERE payout_id = ?
+                   AND status = 'payable'",
+                [$failureReason, $stalePayoutId]
+            );
+        });
+    }
+
+    if (!empty($staleProcessing)) {
+        syncLog('Released stale processing payouts without order id: ' . count($staleProcessing));
+    }
+
     $processingPayouts = Database::query(
         "SELECT id, partner_id, tremendous_order_id
          FROM payouts
@@ -343,7 +389,7 @@ try {
         }
 
         $status = $orderStatusById[$orderId];
-        if ($status === 'EXECUTED') {
+        if (in_array($status, ['APPROVED', 'EXECUTED'], true)) {
             Database::transaction(function () use ($payoutId): void {
                 Database::update(
                     'payouts',
