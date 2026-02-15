@@ -40,7 +40,7 @@ CREATE TABLE `payouts` (
   `partner_id` int unsigned NOT NULL,
   `stripe_customer_balance_transaction_id` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `tremendous_order_id` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `payout_method` enum('manual','stripe_transfer','stripe_customer_balance','tremendous') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'manual',
+  `payout_method` enum('manual','stripe_customer_balance','tremendous') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'manual',
   `amount` decimal(10,2) NOT NULL,
   `status` enum('pending','processing','pending_approval','pending_internal_payment_approval','paid','failed','canceled') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
   `failure_reason` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,

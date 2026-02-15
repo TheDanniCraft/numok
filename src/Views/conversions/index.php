@@ -465,10 +465,6 @@
                                                             Tremendous
                                                         </span>
                                                     <?php endif; ?>
-                                                <?php elseif ($conversion['payout_method'] === 'stripe_transfer'): ?>
-                                                    <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
-                                                        Stripe Transfer
-                                                    </span>
                                                 <?php else: ?>
                                                     <span class="inline-flex items-center rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
                                                         Manual

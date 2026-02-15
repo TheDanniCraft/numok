@@ -13,7 +13,7 @@ CREATE TABLE payouts (
   partner_id INT UNSIGNED NOT NULL,
   stripe_customer_balance_transaction_id VARCHAR(100) DEFAULT NULL,
   tremendous_order_id VARCHAR(100) DEFAULT NULL,
-  payout_method ENUM('manual','stripe_transfer','stripe_customer_balance','tremendous')
+  payout_method ENUM('manual','stripe_customer_balance','tremendous')
     NOT NULL DEFAULT 'manual',
   amount DECIMAL(10,2) NOT NULL,
   status ENUM(
