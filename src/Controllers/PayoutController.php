@@ -8,6 +8,8 @@ use Numok\Middleware\PartnerMiddleware;
 
 class PayoutController extends Controller
 {
+    private const INVOICE_NUMBER_REGEX = '/^[A-Za-z0-9][A-Za-z0-9 ._\/-]{0,254}$/';
+
     public function __construct()
     {
         PartnerMiddleware::handle();
@@ -25,13 +27,20 @@ class PayoutController extends Controller
         if (!$customerEmail || !$invoiceNumber) {
             $this->redirectToSettings('settings_error', 'Customer email and invoice number are required.');
         }
+        if (!preg_match(self::INVOICE_NUMBER_REGEX, $invoiceNumber)) {
+            $this->redirectToSettings(
+                'settings_error',
+                'Invalid invoice number format. Use the exact Stripe invoice number (e.g. INV-2025-001).'
+            );
+        }
 
         $stripeApiKey = $this->getStripeApiKey();
         if (empty($stripeApiKey)) {
             $this->redirectToSettings('settings_error', 'Missing Stripe setup. Contact platform administrator.');
         }
 
-        $query = "number:'" . $invoiceNumber . "'";
+        $safeInvoice = str_replace("'", "\\'", $invoiceNumber);
+        $query = "number:'" . $safeInvoice . "'";
 
         $url = 'https://api.stripe.com/v1/invoices/search?' . http_build_query(['query' => $query]);
         $ch = curl_init($url);

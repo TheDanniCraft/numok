@@ -157,6 +157,7 @@ class PartnerEarningsController extends PartnerBaseController {
              JOIN partner_programs pp ON c.partner_program_id = pp.id
              JOIN programs p ON pp.program_id = p.id
              WHERE {$whereClause}
+             AND (c.status <> 'payable' OR c.payout_id IS NULL)
              ORDER BY c.created_at DESC
              LIMIT ? OFFSET ?",
             $params
@@ -191,7 +192,8 @@ class PartnerEarningsController extends PartnerBaseController {
             "SELECT COUNT(c.id) as count
              FROM conversions c
              JOIN partner_programs pp ON c.partner_program_id = pp.id
-             WHERE {$whereClause}",
+             WHERE {$whereClause}
+               AND (c.status <> 'payable' OR c.payout_id IS NULL)",
             $params
         )->fetch();
 

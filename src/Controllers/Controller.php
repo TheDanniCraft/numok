@@ -228,17 +228,21 @@ class Controller {
 
     protected function buildTremendousExternalId(string $prefix, string $retryToken = '0'): string
     {
-        $prefix = preg_replace('/[^A-Za-z0-9_-]/', '-', trim($prefix)) ?: 'numok-payout';
+        $sanitizedPrefix = preg_replace('/[^A-Za-z0-9_-]/', '-', trim($prefix)) ?: 'numok-payout';
+        $hashPrefix = $sanitizedPrefix;
+
         $normalizedRetryToken = trim($retryToken) !== '' ? trim($retryToken) : '0';
+        $hashRetryToken = $normalizedRetryToken;
+
         if (strlen($normalizedRetryToken) > 16) {
             $normalizedRetryToken = substr($normalizedRetryToken, -16);
         }
 
-        if (strlen($prefix) > 32) {
-            $prefix = substr($prefix, 0, 32);
+        if (strlen($sanitizedPrefix) > 32) {
+            $sanitizedPrefix = substr($sanitizedPrefix, 0, 32);
         }
 
-        $hash = substr(sha1($prefix . '|' . $normalizedRetryToken), 0, 20);
-        return $prefix . '-r' . $normalizedRetryToken . '-' . $hash;
+        $hash = substr(sha1($hashPrefix . '|' . $hashRetryToken), 0, 20);
+        return $sanitizedPrefix . '-r' . $normalizedRetryToken . '-' . $hash;
     }
 }
