@@ -631,27 +631,25 @@ class ConversionsController extends Controller {
             );
 
             if ($payoutStatus === 'failed') {
-                Database::update(
-                    'conversions',
-                    [
-                        'payout_id' => null,
-                        'last_payout_failure_reason' => $reason,
-                        'last_payout_failed_at' => date('Y-m-d H:i:s')
-                    ],
-                    'id = ? AND payout_id = ?',
-                    [$conversionId, $payoutId]
+                Database::query(
+                    "UPDATE conversions
+                     SET payout_id = NULL,
+                         last_payout_failure_reason = ?,
+                         last_payout_failed_at = NOW()
+                     WHERE id = ?
+                       AND payout_id = ?",
+                    [$reason, $conversionId, $payoutId]
                 );
                 return;
             }
 
-            Database::update(
-                'conversions',
-                [
-                    'payout_id' => null,
-                    'last_payout_failure_reason' => null,
-                    'last_payout_failed_at' => date('Y-m-d H:i:s')
-                ],
-                'id = ? AND payout_id = ?',
+            Database::query(
+                "UPDATE conversions
+                 SET payout_id = NULL,
+                     last_payout_failure_reason = NULL,
+                     last_payout_failed_at = NOW()
+                 WHERE id = ?
+                   AND payout_id = ?",
                 [$conversionId, $payoutId]
             );
         });

@@ -58,6 +58,17 @@
                                         </p>
                                     </div>
 
+                                    <!-- Payment Email -->
+                                    <div class="mb-4">
+                                        <label for="payment_email" class="block text-sm font-medium text-gray-700">Payment Email</label>
+                                        <input type="email" name="payment_email" id="payment_email"
+                                            value="<?= htmlspecialchars($partner['payment_email'] ?? $partner['email']) ?>"
+                                            class="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
+                                        <p class="mt-1 text-sm text-gray-500">
+                                            Used for payout-related communication.
+                                        </p>
+                                    </div>
+
                                     <!-- Current Password -->
                                     <div class="mb-4">
                                         <label for="current_password" class="block text-sm font-medium text-gray-700">Current Password</label>

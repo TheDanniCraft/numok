@@ -97,7 +97,12 @@ class PayoutController extends Controller
             $this->redirectToSettings('settings_error', 'An error occurred while processing your request. Please try again later.');
         }
 
-        error_log('Stripe API error: ' . $response);
+        $sanitizedMessage = 'Unknown error';
+        $decodedResponse = json_decode((string) $response, true);
+        if (is_array($decodedResponse) && isset($decodedResponse['error']['message'])) {
+            $sanitizedMessage = (string) $decodedResponse['error']['message'];
+        }
+        error_log(sprintf('Stripe API error (HTTP %d): %s', (int) $httpCode, $sanitizedMessage));
         $this->redirectToSettings('settings_error', 'An error occurred while processing your request. Please try again later.');
     }
 

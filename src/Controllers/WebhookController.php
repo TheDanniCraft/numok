@@ -545,7 +545,7 @@ class WebhookController extends Controller {
 
         foreach ($candidates as $candidate) {
             $value = trim((string) ($candidate ?? ''));
-            if ($value !== '' && preg_match('/^[A-Z0-9]{4,20}$/', $value) === 1) {
+            if ($value !== '' && strlen($value) <= 255) {
                 return $value;
             }
         }
