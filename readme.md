@@ -98,6 +98,24 @@ CREATE DATABASE numok CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 mysql -u your_db_user -p numok < database/deploy.sql
 ```
 
+### 5.1 Conversion Promotion Cron (Required)
+
+Set up a cron job to automatically move matured conversions from `pending` to `payable`:
+
+```bash
+* * * * * /usr/bin/php /path/to/numok/bin/promote-conversions.php >> /var/log/numok-promote.log 2>&1
+```
+
+Adjust PHP binary/path as needed for your server.
+
+### 5.2 Tremendous Payout Sync Cron (Required if Tremendous is enabled)
+
+Set up a cron job to sync Tremendous processing orders (`pending approval`, etc.) and finalize payouts:
+
+```bash
+0 * * * * /usr/bin/php /path/to/numok/bin/sync-tremendous-payouts.php >> /var/log/numok-tremendous-sync.log 2>&1
+```
+
 ### 6\. Web Server Configuration
 
 #### Apache

@@ -36,6 +36,9 @@ $routes = [
     'password/reset' => ['PasswordResetController', 'reset'],
     'settings' => ['PartnerProfileController', 'index'],
     'settings/update' => ['PartnerProfileController', 'update'],
+    'payout/link' => ['PayoutController', 'linkCustomerAccount'],
+    'payout/unlink' => ['PayoutController', 'unlinkCustomerAccount'],
+    'payout/request' => ['PayoutController', 'payoutAvailableBalance'],
     'logout' => ['PartnerAuthController', 'logout'],
     'dashboard' => ['PartnerDashboardController', 'index'],
     'tracking' => ['PartnerTrackingController', 'index'],
@@ -85,6 +88,7 @@ $routes = [
 
     // Webhook routes
     'webhook/stripe' => ['WebhookController', 'stripeWebhook'],
+    'webhook/tremendous' => ['WebhookController', 'tremendousWebhook'],
 ];
 
 // Check if route exists or matches a pattern

@@ -1,5 +1,47 @@
 <?php
 // File: src/Views/partner/earnings/index.php
+$enabledPayoutMethods = array_filter(array_map('trim', explode(',', (string)($settings['enabled_payout_methods'] ?? ''))));
+$stripePayoutEnabled = in_array('stripe_customer_balance', $enabledPayoutMethods, true);
+$tremendousPayoutEnabled = in_array('tremendous', $enabledPayoutMethods, true);
+$minPayoutAmountStripe = isset($settings['min_payout_amount_stripe_customer_balance']) && is_numeric($settings['min_payout_amount_stripe_customer_balance'])
+    ? max(0.0, (float) $settings['min_payout_amount_stripe_customer_balance'])
+    : ((isset($settings['min_payout_amount']) && is_numeric($settings['min_payout_amount']))
+        ? max(0.0, (float) $settings['min_payout_amount'])
+        : 0.0);
+$minPayoutAmountTremendous = isset($settings['min_payout_amount_tremendous']) && is_numeric($settings['min_payout_amount_tremendous'])
+    ? max(0.0, (float) $settings['min_payout_amount_tremendous'])
+    : ((isset($settings['min_payout_amount']) && is_numeric($settings['min_payout_amount']))
+        ? max(0.0, (float) $settings['min_payout_amount'])
+        : 0.0);
+$tremendousConfigured = !empty($settings['tremendous_api_key']);
+$tremendousCampaignEligible = !empty($tremendous_payout_eligibility['is_eligible']);
+$payableAmount = (float) ($payout_summary['payable_amount'] ?? 0);
+$canUseStripe = $stripePayoutEnabled && !empty($payout_account['is_linked']);
+$canUseTremendous = $tremendousPayoutEnabled
+    && $tremendousConfigured
+    && !empty($payout_account['email'])
+    && $tremendousCampaignEligible;
+$payoutOptions = [];
+if ($canUseStripe && $payableAmount >= $minPayoutAmountStripe) {
+    $payoutOptions['stripe_customer_balance'] = 'Stripe Customer Balance';
+}
+if ($canUseTremendous && $payableAmount >= $minPayoutAmountTremendous) {
+    $payoutOptions['tremendous'] = 'Tremendous';
+}
+$defaultPayoutSource = array_key_first($payoutOptions) ?: 'stripe_customer_balance';
+$showTremendousPayoutModal = isset($_SESSION['earnings_tremendous_notice']);
+$tremendousPayoutOrderId = $_SESSION['earnings_tremendous_order_id'] ?? null;
+$tremendousPayoutOrderStatus = strtoupper(trim((string) ($_SESSION['earnings_tremendous_order_status'] ?? '')));
+$tremendousAwaitingApproval = in_array($tremendousPayoutOrderStatus, ['CART', 'PENDING APPROVAL', 'PENDING INTERNAL PAYMENT APPROVAL'], true);
+$tremendousPendingExplanation = null;
+if ($tremendousPayoutOrderStatus === 'PENDING APPROVAL') {
+    $tremendousPendingExplanation = 'Your Tremendous order was created and is waiting for approval from our team.';
+} elseif ($tremendousPayoutOrderStatus === 'PENDING INTERNAL PAYMENT APPROVAL') {
+    $tremendousPendingExplanation = 'Your Tremendous order was created and is under payment review by the Tremendous team.';
+} elseif ($tremendousPayoutOrderStatus === 'CART') {
+    $tremendousPendingExplanation = 'Your Tremendous order was created and is still being processed.';
+}
+unset($_SESSION['earnings_tremendous_notice'], $_SESSION['earnings_tremendous_order_id'], $_SESSION['earnings_tremendous_order_status']);
 ?>
 <div class="py-6">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -22,6 +64,38 @@
                 </a>
             </div>
         </div>
+
+        <?php if (isset($_SESSION['earnings_success'])): ?>
+            <div class="rounded-md bg-green-50 p-4 mt-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-green-800"><?= htmlspecialchars($_SESSION['earnings_success']) ?></p>
+                    </div>
+                </div>
+            </div>
+            <?php unset($_SESSION['earnings_success']); ?>
+        <?php endif; ?>
+
+        <?php if (isset($_SESSION['earnings_error'])): ?>
+            <div class="rounded-md bg-red-50 p-4 mt-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-red-800"><?= htmlspecialchars($_SESSION['earnings_error']) ?></p>
+                    </div>
+                </div>
+            </div>
+            <?php unset($_SESSION['earnings_error']); ?>
+        <?php endif; ?>
 
         <!-- Filters -->
         <div class="mt-8 bg-white shadow rounded-lg">
@@ -150,14 +224,14 @@
             <!-- Left Column - Chart -->
             <div class="lg:col-span-2">
                 <!-- Monthly Earnings Chart -->
-                <div class="bg-white shadow rounded-lg">
-                    <div class="px-4 py-5 sm:p-6">
+                <div class="bg-white shadow rounded-lg h-full">
+                    <div class="px-4 py-5 sm:p-6 h-full flex flex-col">
                         <h3 class="text-base font-semibold leading-6 text-gray-900">Monthly Earnings Trend</h3>
                         <p class="mt-2 text-sm text-gray-700">Your commission earnings over time</p>
                         
                         <?php if (!empty($monthly_earnings)): ?>
                         <div class="mt-6">
-                            <div class="relative h-64">
+                            <div class="relative min-h-[320px] lg:h-full">
                                 <canvas id="earningsChart" class="w-full h-full"></canvas>
                             </div>
                         </div>
@@ -219,12 +293,71 @@
             </div>
 
             <!-- Right Column - Status Breakdown -->
-            <div>
+            <div class="space-y-8">
+                <div class="bg-white shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <h3 class="text-base font-semibold leading-6 text-gray-900">Available Payout Balance</h3>
+                        <p class="mt-2 text-sm text-gray-700">Live balance currently available for payout.</p>
+                        
+                        <div class="mt-6 space-y-4">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm font-medium text-gray-900">Available Balance</span>
+                                <span class="text-sm font-semibold text-gray-900">$<?= number_format((float) ($payout_summary['payable_amount'] ?? 0), 2) ?></span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm font-medium text-gray-900">Payable Conversions</span>
+                                <span class="text-sm text-gray-600"><?= number_format((int) ($payout_summary['payable_count'] ?? 0)) ?></span>
+                            </div>
+
+                            <div>
+                                <?php if ($payableAmount <= 0): ?>
+                                    <button
+                                        type="button"
+                                        disabled
+                                        class="w-full inline-flex justify-center items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-400 cursor-not-allowed">
+                                        No Payable Balance
+                                    </button>
+                                <?php elseif (!empty($payoutOptions)): ?>
+                                    <form method="POST" action="/payout/request" id="payoutForm">
+                                        <input type="hidden" id="payout_source_input" name="payout_source" value="<?= htmlspecialchars($defaultPayoutSource) ?>">
+                                        <button
+                                            type="button"
+                                            id="openPayoutConfirm"
+                                            class="w-full inline-flex justify-center items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                                            Payout Available Balance
+                                        </button>
+                                    </form>
+                                <?php elseif (($canUseStripe || $canUseTremendous) && $payableAmount > 0): ?>
+                                    <button
+                                        type="button"
+                                        disabled
+                                        class="w-full inline-flex justify-center items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-400 cursor-not-allowed">
+                                        Minimum payout amount not reached
+                                    </button>
+                                <?php elseif ($stripePayoutEnabled && empty($payout_account['is_linked']) && !$canUseTremendous): ?>
+                                    <a
+                                        href="/settings"
+                                        class="w-full inline-flex justify-center items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-200">
+                                        Link Stripe Customer Account
+                                    </a>
+                                <?php else: ?>
+                                    <button
+                                        type="button"
+                                        disabled
+                                        class="w-full inline-flex justify-center items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-400 cursor-not-allowed">
+                                        Payout action required
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="bg-white shadow rounded-lg">
                     <div class="px-4 py-5 sm:p-6">
                         <h3 class="text-base font-semibold leading-6 text-gray-900">Commission Status</h3>
                         <p class="mt-2 text-sm text-gray-700">Breakdown by payment status</p>
-                        
+
                         <div class="mt-6 space-y-4">
                             <!-- Pending -->
                             <div class="flex items-center justify-between">
@@ -301,8 +434,10 @@
                                             <?= date('M j, Y', strtotime($conversion['created_at'])) ?>
                                             <div class="text-xs text-gray-500"><?= date('g:i A', strtotime($conversion['created_at'])) ?></div>
                                         </td>
-                                        <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                                            <?= htmlspecialchars($conversion['program_name']) ?>
+                                        <td class="px-3 py-4 text-sm text-gray-900">
+                                            <div class="max-w-[220px] truncate" title="<?= htmlspecialchars($conversion['program_name']) ?>">
+                                                <?= htmlspecialchars($conversion['program_name']) ?>
+                                            </div>
                                         </td>
                                         <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                                             $<?= number_format($conversion['amount'], 2) ?>
@@ -311,14 +446,24 @@
                                             $<?= number_format($conversion['commission_amount'], 2) ?>
                                         </td>
                                         <td class="whitespace-nowrap px-3 py-4 text-sm">
-                                            <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium 
-                                                <?php switch($conversion['status']):
-                                                    case 'pending': echo 'bg-yellow-100 text-yellow-800'; break;
-                                                    case 'payable': echo 'bg-green-100 text-green-800'; break;
-                                                    case 'paid': echo 'bg-blue-100 text-blue-800'; break;
-                                                    case 'rejected': echo 'bg-red-100 text-red-800'; break;
-                                                endswitch; ?>">
-                                                <?= ucfirst(htmlspecialchars($conversion['status'])) ?>
+                                            <?php
+                                                $isPayoutPending = ($conversion['status'] ?? '') === 'payable' && !empty($conversion['payout_id']);
+                                                $statusClass = 'bg-gray-100 text-gray-800';
+                                                $statusLabel = ucfirst(htmlspecialchars((string) ($conversion['status'] ?? '')));
+                                                if ($isPayoutPending) {
+                                                    $statusClass = 'bg-amber-100 text-amber-800';
+                                                    $statusLabel = 'Payout Pending';
+                                                } else {
+                                                    switch ($conversion['status']) {
+                                                        case 'pending': $statusClass = 'bg-yellow-100 text-yellow-800'; break;
+                                                        case 'payable': $statusClass = 'bg-green-100 text-green-800'; break;
+                                                        case 'paid': $statusClass = 'bg-blue-100 text-blue-800'; break;
+                                                        case 'rejected': $statusClass = 'bg-red-100 text-red-800'; break;
+                                                    }
+                                                }
+                                            ?>
+                                            <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium <?= $statusClass ?>">
+                                                <?= $statusLabel ?>
                                             </span>
                                         </td>
                                         <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 font-mono">
@@ -402,5 +547,190 @@
     </div>
 </div>
 
+<div id="payoutConfirmModal" class="fixed inset-0 z-50 hidden">
+    <div id="payoutConfirmBackdrop" class="absolute inset-0 bg-gray-900/60"></div>
+    <div class="absolute inset-0 flex items-center justify-center px-4">
+        <div class="w-full max-w-md rounded-lg bg-white shadow-xl">
+            <div class="px-6 py-5">
+                <h3 class="text-lg font-semibold text-gray-900">Confirm Payout</h3>
+                <div class="mt-3">
+                    <label for="payout_source_modal" class="block text-sm font-medium text-gray-700 mb-1">
+                        Payment Source
+                    </label>
+                    <div class="mb-2 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600 space-y-1">
+                        <?php if (isset($payoutOptions['stripe_customer_balance'])): ?>
+                            <p><span class="font-medium text-gray-700">Stripe Customer Balance:</span> sends payout to your linked Stripe customer balance.</p>
+                        <?php endif; ?>
+                        <?php if (isset($payoutOptions['tremendous'])): ?>
+                            <p>
+                                <span class="font-medium text-gray-700">Tremendous:</span>
+                                provides payout options via bank transfer, PayPal, gift cards, charity donations, and more.
+                                <a href="https://www.tremendous.com/catalog/" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-500">View available methods</a>.
+                            </p>
+                        <?php endif; ?>
+                    </div>
+                    <select
+                        id="payout_source_modal"
+                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        <?php if (isset($payoutOptions['stripe_customer_balance'])): ?>
+                            <option value="stripe_customer_balance">Stripe Customer Balance</option>
+                        <?php endif; ?>
+                        <?php if (isset($payoutOptions['tremendous'])): ?>
+                            <option value="tremendous">Tremendous</option>
+                        <?php endif; ?>
+                    </select>
+                </div>
+                <p class="mt-2 text-sm text-gray-600">
+                    Are you sure you want to payout your available balance of
+                    <span class="font-semibold text-gray-900">$<?= number_format((float) ($payout_summary['payable_amount'] ?? 0), 2) ?></span>
+                    using
+                    <span id="payoutSourceLabel" class="font-semibold text-gray-900">Stripe Customer Balance</span>?
+                </p>
+                <?php
+                $payableCount = (int) ($payout_summary['payable_count'] ?? 0);
+                $previewIds = $payout_summary['payable_preview_ids'] ?? [];
+                ?>
+                <?php if ($payableCount > 0): ?>
+                    <div class="mt-2 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                        <div>
+                            Paying out <?= number_format($payableCount) ?> conversion<?= $payableCount === 1 ? '' : 's' ?>.
+                        </div>
+                        <?php if (!empty($previewIds)): ?>
+                            <div class="mt-1">
+                                Conversion IDs:
+                                <?= implode(', ', array_map(static fn(int $id): string => '#' . $id, $previewIds)) ?><?= $payableCount > count($previewIds) ? ', ...' : '' ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+                <p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                    Payouts cannot be withdrawn or reversed after confirmation.
+                </p>
+            </div>
+            <div class="flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
+                <button
+                    type="button"
+                    id="cancelPayoutConfirm"
+                    class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                    Cancel
+                </button>
+                <button
+                    type="button"
+                    id="submitPayoutConfirm"
+                    class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                    Yes, payout now
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php if ($showTremendousPayoutModal): ?>
+<div id="tremendousPayoutSentModal" class="fixed inset-0 z-50">
+    <div id="tremendousPayoutSentBackdrop" class="absolute inset-0 bg-gray-900/60"></div>
+    <div class="absolute inset-0 flex items-center justify-center px-4">
+        <div class="w-full max-w-md rounded-lg bg-white shadow-xl">
+            <div class="px-6 py-5">
+                <h3 class="text-lg font-semibold text-gray-900">Payout Sent</h3>
+                <p class="mt-2 text-sm text-gray-600">
+                    <?php if ($tremendousAwaitingApproval): ?>
+                        <?= htmlspecialchars((string) ($tremendousPendingExplanation ?? 'Your Tremendous order has been created and is waiting for approval.')) ?>
+                    <?php else: ?>
+                        Your Tremendous payout was sent to your email address. Please check your inbox.
+                    <?php endif; ?>
+                </p>
+                <?php if (!empty($tremendousPayoutOrderId)): ?>
+                    <p class="mt-2 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                        Tremendous Order ID:
+                        <span class="font-mono text-gray-800"><?= htmlspecialchars((string) $tremendousPayoutOrderId) ?></span>
+                    </p>
+                <?php endif; ?>
+            </div>
+            <div class="flex justify-end border-t border-gray-200 px-6 py-4">
+                <button
+                    type="button"
+                    id="closeTremendousPayoutSentModal"
+                    class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                    Got it
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- Chart.js CDN -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const openBtn = document.getElementById('openPayoutConfirm');
+    const modal = document.getElementById('payoutConfirmModal');
+    const cancelBtn = document.getElementById('cancelPayoutConfirm');
+    const submitBtn = document.getElementById('submitPayoutConfirm');
+    const backdrop = document.getElementById('payoutConfirmBackdrop');
+    const payoutForm = document.getElementById('payoutForm');
+    const payoutSourceSelect = document.getElementById('payout_source_modal');
+    const payoutSourceInput = document.getElementById('payout_source_input');
+    const payoutSourceLabel = document.getElementById('payoutSourceLabel');
+
+    if (openBtn && modal && cancelBtn && submitBtn && backdrop && payoutForm) {
+        const openModal = function () {
+            if (payoutSourceSelect && payoutSourceLabel) {
+                const selectedText = payoutSourceSelect.options[payoutSourceSelect.selectedIndex]?.text || 'Selected Source';
+                payoutSourceLabel.textContent = selectedText;
+            }
+            modal.classList.remove('hidden');
+        };
+
+        const closeModal = function () {
+            modal.classList.add('hidden');
+        };
+
+        openBtn.addEventListener('click', openModal);
+        cancelBtn.addEventListener('click', closeModal);
+        backdrop.addEventListener('click', closeModal);
+        if (payoutSourceSelect && payoutSourceLabel) {
+            payoutSourceSelect.addEventListener('change', function () {
+                const selectedText = payoutSourceSelect.options[payoutSourceSelect.selectedIndex]?.text || 'Selected Source';
+                payoutSourceLabel.textContent = selectedText;
+                if (payoutSourceInput) {
+                    payoutSourceInput.value = payoutSourceSelect.value;
+                }
+            });
+        }
+
+        submitBtn.addEventListener('click', function () {
+            if (payoutSourceInput && payoutSourceSelect) {
+                payoutSourceInput.value = payoutSourceSelect.value;
+            }
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-70', 'cursor-not-allowed');
+            payoutForm.submit();
+        });
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+                closeModal();
+            }
+        });
+    }
+
+    const tremendousSentModal = document.getElementById('tremendousPayoutSentModal');
+    const tremendousSentBackdrop = document.getElementById('tremendousPayoutSentBackdrop');
+    const closeTremendousSentBtn = document.getElementById('closeTremendousPayoutSentModal');
+    if (tremendousSentModal && tremendousSentBackdrop && closeTremendousSentBtn) {
+        const closeTremendousSentModal = function () {
+            tremendousSentModal.classList.add('hidden');
+        };
+
+        closeTremendousSentBtn.addEventListener('click', closeTremendousSentModal);
+        tremendousSentBackdrop.addEventListener('click', closeTremendousSentModal);
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && !tremendousSentModal.classList.contains('hidden')) {
+                closeTremendousSentModal();
+            }
+        });
+    }
+});
+</script>
+

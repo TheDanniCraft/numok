@@ -5,40 +5,138 @@ namespace Numok\Controllers;
 use Numok\Database\Database;
 use Numok\Middleware\AuthMiddleware;
 
-class SettingsController extends Controller {
+class SettingsController extends Controller
+{
     private string $stripeTestEndpoint = 'https://api.stripe.com/v1/customers';
-    public function __construct() {
+    public function __construct()
+    {
         AuthMiddleware::adminOnly();
     }
 
-    public function index(): void {
+    public function index(): void
+    {
         $settings = $this->getAllSettings();
-        
+
         $this->view('settings/index', [
             'title' => 'Settings - ' . ($settings['custom_app_name'] ?? 'Numok'),
             'settings' => $settings,
             'success' => $_SESSION['settings_success'] ?? null,
             'error' => $_SESSION['settings_error'] ?? null
         ]);
-        
+
         // Clear flash messages
         unset($_SESSION['settings_success'], $_SESSION['settings_error']);
     }
 
-    public function update(): void {
+    public function update(): void
+    {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             header('Location: /admin/settings');
             exit;
         }
 
+        $currentSettings = $this->getAllSettings();
+
         try {
-            Database::transaction(function() {
-                $settings = [
-                    'app_name' => $_POST['app_name'] ?? 'Numok',
-                    'partner_welcome_message' => $_POST['partner_welcome_message'] ?? '',
-                    'stripe_secret_key' => $_POST['stripe_secret_key'] ?? '',
-                    'stripe_webhook_secret' => $_POST['stripe_webhook_secret'] ?? ''
-                ];
+            Database::transaction(function () use ($currentSettings) {
+                $settings = [];
+
+                if (array_key_exists('app_name', $_POST)) {
+                    $settings['app_name'] = trim((string) $_POST['app_name']);
+                    if ($settings['app_name'] === '') {
+                        $settings['app_name'] = 'Numok';
+                    }
+                }
+
+                if (array_key_exists('partner_welcome_message', $_POST)) {
+                    $settings['partner_welcome_message'] = (string) ($_POST['partner_welcome_message'] ?? '');
+                }
+
+                if (array_key_exists('stripe_secret_key', $_POST)) {
+                    $settings['stripe_secret_key'] = (string) ($_POST['stripe_secret_key'] ?? '');
+                }
+
+                if (array_key_exists('stripe_webhook_secret', $_POST)) {
+                    $settings['stripe_webhook_secret'] = (string) ($_POST['stripe_webhook_secret'] ?? '');
+                }
+
+                if (array_key_exists('min_payout_amount', $_POST)) {
+                    $rawMinPayout = (string) ($_POST['min_payout_amount'] ?? '0');
+                    $validated = is_numeric($rawMinPayout) ? (float) $rawMinPayout : null;
+                    if ($validated === null || $validated < 0) {
+                        throw new \InvalidArgumentException('Minimum payout amount must be a non-negative number.');
+                    }
+                    $settings['min_payout_amount'] = number_format($validated, 2, '.', '');
+                }
+
+                foreach ([
+                    'min_payout_amount_stripe_customer_balance',
+                    'min_payout_amount_tremendous'
+                ] as $minPayoutKey) {
+                    if (array_key_exists($minPayoutKey, $_POST)) {
+                        $rawValue = (string) ($_POST[$minPayoutKey] ?? '0');
+                        $validated = is_numeric($rawValue) ? (float) $rawValue : null;
+                        if ($validated === null || $validated < 0) {
+                            throw new \InvalidArgumentException('Minimum payout amount values must be non-negative numbers.');
+                        }
+                        $settings[$minPayoutKey] = number_format($validated, 2, '.', '');
+                    }
+                }
+
+                if (array_key_exists('enabled_payout_methods', $_POST)) {
+                    $methods = $_POST['enabled_payout_methods'];
+                    if (!is_array($methods)) {
+                        $methods = [];
+                    }
+
+                    $allowedMethods = ['stripe_customer_balance', 'tremendous'];
+                    $methods = array_values(array_intersect($allowedMethods, $methods));
+
+                    // Empty value is valid and means manual-only payouts.
+                    $settings['enabled_payout_methods'] = implode(',', $methods);
+                }
+
+                foreach ([
+                    'tremendous_api_key',
+                ] as $tremendousKey) {
+                    if (array_key_exists($tremendousKey, $_POST)) {
+                        $submittedValue = trim((string) ($_POST[$tremendousKey] ?? ''));
+                        if ($submittedValue === '' && isset($currentSettings[$tremendousKey])) {
+                            $settings[$tremendousKey] = (string) $currentSettings[$tremendousKey];
+                        } else {
+                            $settings[$tremendousKey] = $submittedValue;
+                        }
+                    }
+                }
+
+                if (array_key_exists('tremendous_api_key', $settings)) {
+                    $tremendousApiKey = $settings['tremendous_api_key'];
+                    if (
+                        $tremendousApiKey !== ''
+                        && !str_starts_with($tremendousApiKey, 'TEST_')
+                        && !str_starts_with($tremendousApiKey, 'PROD_')
+                    ) {
+                        throw new \InvalidArgumentException('Tremendous API key must start with TEST_ or PROD_.');
+                    }
+                }
+
+                if (empty($settings)) {
+                    foreach ([
+                        'app_name',
+                        'partner_welcome_message',
+                        'stripe_secret_key',
+                        'stripe_webhook_secret',
+                        'min_payout_amount',
+                        'min_payout_amount_stripe_customer_balance',
+                        'min_payout_amount_tremendous',
+                        'enabled_payout_methods',
+                        'tremendous_api_key',
+                    ] as $key) {
+                        if (isset($currentSettings[$key])) {
+                            $settings[$key] = $currentSettings[$key];
+                        }
+                    }
+                }
 
                 foreach ($settings as $key => $value) {
                     Database::query(
@@ -51,6 +149,8 @@ class SettingsController extends Controller {
             });
 
             $_SESSION['settings_success'] = 'Settings updated successfully.';
+        } catch (\InvalidArgumentException $e) {
+            $_SESSION['settings_error'] = $e->getMessage();
         } catch (\Exception $e) {
             $_SESSION['settings_error'] = 'Failed to update settings. Please try again.';
         }
@@ -59,7 +159,8 @@ class SettingsController extends Controller {
         exit;
     }
 
-    public function testConnection(): void {
+    public function testConnection(): void
+    {
         header('Content-Type: application/json');
 
         $settings = $this->getAllSettings();
@@ -75,7 +176,7 @@ class SettingsController extends Controller {
                     'Stripe-Version: 2023-10-16'
                 ]
             ]);
-            
+
             $result = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
@@ -110,7 +211,7 @@ class SettingsController extends Controller {
             $timestamp = time();
             $payload = json_encode(['type' => 'test']);
             $signature = hash_hmac('sha256', "{$timestamp}.{$payload}", $settings['stripe_webhook_secret']);
-            
+
             if ($signature) {
                 $response['messages'][] = [
                     'type' => 'success',
@@ -131,10 +232,11 @@ class SettingsController extends Controller {
         exit;
     }
 
-    private function getAllSettings(): array {
+    private function getAllSettings(): array
+    {
         $stmt = Database::query("SELECT name, value FROM settings");
         $settings = [];
-        
+
         while ($row = $stmt->fetch()) {
             $settings[$row['name']] = $row['value'];
         }
@@ -142,34 +244,35 @@ class SettingsController extends Controller {
         return $settings;
     }
 
-    public function updateProfile(): void {
+    public function updateProfile(): void
+    {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             header('Location: /admin/settings');
             exit;
         }
-    
+
         $userId = $_SESSION['user_id'];
         $currentPassword = $_POST['current_password'] ?? '';
         $newEmail = filter_var($_POST['email'] ?? '', FILTER_VALIDATE_EMAIL);
         $newPassword = $_POST['new_password'] ?? '';
         $confirmPassword = $_POST['confirm_password'] ?? '';
-    
+
         try {
             // Verify current user
             $user = Database::query(
                 "SELECT * FROM users WHERE id = ? LIMIT 1",
                 [$userId]
             )->fetch();
-    
+
             if (!$user || !password_verify($currentPassword, $user['password'])) {
                 $_SESSION['settings_error'] = 'Current password is incorrect';
                 header('Location: /admin/settings');
                 exit;
             }
-    
+
             $updates = [];
             $params = [];
-    
+
             // Handle email update
             if ($newEmail && $newEmail !== $user['email']) {
                 // Check if email is already taken
@@ -177,17 +280,17 @@ class SettingsController extends Controller {
                     "SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1",
                     [$newEmail, $userId]
                 )->fetch();
-    
+
                 if ($existing) {
                     $_SESSION['settings_error'] = 'Email address is already in use';
                     header('Location: /admin/settings');
                     exit;
                 }
-    
+
                 $updates[] = "email = ?";
                 $params[] = $newEmail;
             }
-    
+
             // Handle password update
             if ($newPassword) {
                 if (strlen($newPassword) < 8) {
@@ -195,17 +298,17 @@ class SettingsController extends Controller {
                     header('Location: /admin/settings');
                     exit;
                 }
-    
+
                 if ($newPassword !== $confirmPassword) {
                     $_SESSION['settings_error'] = 'New passwords do not match';
                     header('Location: /admin/settings');
                     exit;
                 }
-    
+
                 $updates[] = "password = ?";
                 $params[] = password_hash($newPassword, PASSWORD_DEFAULT);
             }
-    
+
             // If there are updates to make
             if (!empty($updates)) {
                 $params[] = $userId;
@@ -213,34 +316,34 @@ class SettingsController extends Controller {
                     "UPDATE users SET " . implode(', ', $updates) . " WHERE id = ?",
                     $params
                 );
-    
+
                 // Update session if email changed
                 if ($newEmail && $newEmail !== $user['email']) {
                     $_SESSION['user_email'] = $newEmail;
                 }
-    
+
                 $_SESSION['settings_success'] = 'Profile updated successfully';
             }
-    
         } catch (\Exception $e) {
             error_log("Profile update error: " . $e->getMessage());
             $_SESSION['settings_error'] = 'Failed to update profile. Please try again.';
         }
-    
+
         header('Location: /admin/settings');
         exit;
     }
 
-    public function updateBranding(): void {
+    public function updateBranding(): void
+    {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             header('Location: /admin/settings');
             exit;
         }
 
         try {
-            Database::transaction(function() {
+            Database::transaction(function () {
                 $settings = [];
-                
+
                 // Handle custom app name
                 if (isset($_POST['custom_app_name'])) {
                     $settings['custom_app_name'] = trim($_POST['custom_app_name']);
@@ -249,34 +352,34 @@ class SettingsController extends Controller {
                 // Handle logo upload
                 if (isset($_FILES['custom_logo']) && $_FILES['custom_logo']['error'] === UPLOAD_ERR_OK) {
                     $uploadedFile = $_FILES['custom_logo'];
-                    
+
                     // Validate file type
                     $allowedTypes = ['image/jpeg', 'image/png', 'image/svg+xml', 'image/webp'];
                     if (!in_array($uploadedFile['type'], $allowedTypes)) {
                         throw new \Exception('Invalid file type. Please upload a PNG, JPG, SVG, or WebP image.');
                     }
-                    
+
                     // Validate file size (max 5MB)
                     if ($uploadedFile['size'] > 5 * 1024 * 1024) {
                         throw new \Exception('File size too large. Please upload an image smaller than 5MB.');
                     }
-                    
+
                     // Generate unique filename
                     $extension = pathinfo($uploadedFile['name'], PATHINFO_EXTENSION);
                     $filename = 'logo_' . time() . '_' . uniqid() . '.' . $extension;
                     $uploadDir = ROOT_PATH . '/public/assets/uploads';
                     $uploadPath = $uploadDir . '/' . $filename;
-                    
+
                     // Create uploads directory if it doesn't exist
                     if (!is_dir($uploadDir)) {
                         mkdir($uploadDir, 0755, true);
                     }
-                    
+
                     // Move uploaded file
                     if (!move_uploaded_file($uploadedFile['tmp_name'], $uploadPath)) {
                         throw new \Exception('Failed to upload logo. Please try again.');
                     }
-                    
+
                     // Delete old logo if exists
                     $currentSettings = $this->getAllSettings();
                     if (!empty($currentSettings['custom_logo'])) {
@@ -285,7 +388,7 @@ class SettingsController extends Controller {
                             unlink($oldLogoPath);
                         }
                     }
-                    
+
                     $settings['custom_logo'] = $filename;
                 }
 
@@ -309,17 +412,18 @@ class SettingsController extends Controller {
         exit;
     }
 
-    public function resetBranding(): void {
+    public function resetBranding(): void
+    {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             header('Location: /admin/settings');
             exit;
         }
 
         try {
-            Database::transaction(function() {
+            Database::transaction(function () {
                 // Get current settings to delete old logo file
                 $currentSettings = $this->getAllSettings();
-                
+
                 // Delete old logo file if exists
                 if (!empty($currentSettings['custom_logo'])) {
                     $oldLogoPath = ROOT_PATH . '/public/assets/uploads/' . $currentSettings['custom_logo'];
@@ -327,7 +431,7 @@ class SettingsController extends Controller {
                         unlink($oldLogoPath);
                     }
                 }
-                
+
                 // Remove custom branding settings from database
                 Database::query("DELETE FROM settings WHERE name IN ('custom_app_name', 'custom_logo')");
             });

@@ -30,6 +30,33 @@ CREATE TABLE `clicks` (
 
 
 
+# Dump of table payouts
+# ------------------------------------------------------------
+
+DROP TABLE IF EXISTS `payouts`;
+
+CREATE TABLE `payouts` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `partner_id` int unsigned NOT NULL,
+  `stripe_customer_balance_transaction_id` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `tremendous_order_id` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `payout_method` enum('manual','stripe_customer_balance','tremendous') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'manual',
+  `amount` decimal(10,2) NOT NULL,
+  `status` enum('pending','processing','pending_approval','pending_internal_payment_approval','paid','failed','canceled') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `failure_reason` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  KEY `partner_id` (`partner_id`),
+  KEY `idx_payouts_status_method_updated_at` (`status`,`payout_method`,`updated_at`),
+  KEY `idx_payouts_tremendous_order_id` (`tremendous_order_id`),
+  KEY `idx_payouts_method_status` (`payout_method`,`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+
 # Dump of table conversions
 # ------------------------------------------------------------
 
@@ -42,6 +69,9 @@ CREATE TABLE `conversions` (
   `amount` decimal(10,2) NOT NULL,
   `commission_amount` decimal(10,2) NOT NULL,
   `status` enum('pending','payable','rejected','paid') COLLATE utf8mb4_unicode_ci DEFAULT 'pending',
+  `payout_id` int unsigned DEFAULT NULL,
+  `last_payout_failure_reason` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `last_payout_failed_at` timestamp NULL DEFAULT NULL,
   `customer_email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `metadata` json DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
@@ -50,7 +80,10 @@ CREATE TABLE `conversions` (
   UNIQUE KEY `stripe_payment_id` (`stripe_payment_id`),
   KEY `partner_program_id` (`partner_program_id`),
   KEY `idx_stripe_payment` (`stripe_payment_id`),
-  CONSTRAINT `conversions_ibfk_1` FOREIGN KEY (`partner_program_id`) REFERENCES `partner_programs` (`id`) ON DELETE CASCADE
+  KEY `idx_payout_id` (`payout_id`),
+  KEY `idx_status_payout_id` (`status`,`payout_id`),
+  CONSTRAINT `conversions_ibfk_1` FOREIGN KEY (`partner_program_id`) REFERENCES `partner_programs` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `conversions_ibfk_2` FOREIGN KEY (`payout_id`) REFERENCES `payouts` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
@@ -108,6 +141,7 @@ CREATE TABLE `partners` (
   `password` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `company_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `contact_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `stripe_customer_id` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `status` enum('pending','active','rejected','suspended') COLLATE utf8mb4_unicode_ci DEFAULT 'pending',
   `payment_email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
@@ -115,6 +149,9 @@ CREATE TABLE `partners` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `payouts`
+ADD CONSTRAINT `payouts_ibfk_1` FOREIGN KEY (`partner_id`) REFERENCES `partners` (`id`) ON DELETE CASCADE;
 
 # Dump of table programs
 # ------------------------------------------------------------
@@ -129,7 +166,7 @@ CREATE TABLE `programs` (
   `commission_value` decimal(10,2) NOT NULL,
   `cookie_days` int unsigned DEFAULT '30',
   `is_recurring` tinyint(1) DEFAULT '0',
-  `reward_days` int unsigned DEFAULT '0',
+  `reward_days` int unsigned DEFAULT '7',
   `landing_page` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `status` enum('active','inactive') COLLATE utf8mb4_unicode_ci DEFAULT 'active',
   `is_private` tinyint(1) NOT NULL DEFAULT '0',
@@ -199,11 +236,13 @@ CREATE TABLE `password_resets` (
   KEY `token` (`token`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Migration 0004: Add is_private column to programs table
--- Default to 0 (public) to preserve existing program behavior
+-- Migration 0005: Add payout settings defaults
 ALTER TABLE programs
-ADD COLUMN IF NOT EXISTS is_private TINYINT(1) NOT NULL DEFAULT 0 AFTER status;
+ADD COLUMN tremendous_campaign_id VARCHAR(100) DEFAULT NULL AFTER reward_days;
 
--- Add index for efficient filtering on visibility (ignore if exists)
-ALTER TABLE programs
-ADD INDEX IF NOT EXISTS idx_is_private (is_private);
+INSERT INTO settings (name, value)
+VALUES
+  ('enabled_payout_methods', 'stripe_customer_balance'),
+  ('min_payout_amount_stripe_customer_balance', '0.00'),
+  ('min_payout_amount_tremendous', '0.00')
+ON DUPLICATE KEY UPDATE value = VALUES(value);

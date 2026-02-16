@@ -101,6 +101,16 @@ if (!isset($program)) {
                                             <p class="mt-2 text-sm text-gray-600">Where partners should send their traffic.</p>
                                         </div>
 
+                                        <div class="sm:col-span-4">
+                                            <label for="tremendous_campaign_id" class="block text-sm font-medium leading-6 text-gray-900">Tremendous Campaign ID</label>
+                                            <div class="mt-2">
+                                                <input type="text" name="tremendous_campaign_id" id="tremendous_campaign_id"
+                                                    value="<?= htmlspecialchars($program['tremendous_campaign_id'] ?? '') ?>"
+                                                    class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
+                                            </div>
+                                            <p class="mt-2 text-sm text-gray-600">Used for Tremendous payouts of conversions from this program.</p>
+                                        </div>
+
                                         <div class="col-span-full">
                                             <div class="relative flex gap-x-3">
                                                 <div class="flex h-6 items-center">
@@ -173,7 +183,7 @@ if (!isset($program)) {
                                     min="0" value="<?= htmlspecialchars($program['reward_days']) ?>"
                                     class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
                             </div>
-                            <p class="mt-2 text-sm text-gray-600">Days to wait before marking commission as payable.</p>
+                            <p class="mt-2 text-sm text-gray-600">Days to wait before automatically marking commission as payable.</p>
                         </div>
 
                         <div class="col-span-full">

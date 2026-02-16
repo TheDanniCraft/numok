@@ -256,6 +256,102 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Payout Settings -->
+                <div class="bg-white shadow sm:rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <h3 class="text-base font-semibold leading-6 text-gray-900">Payout Settings</h3>
+                        <div class="mt-4 max-w-xl">
+                            <form action="/admin/settings/update" method="POST">
+                                <?php
+                                $enabledPayoutMethods = array_filter(array_map('trim', explode(',', (string)($settings['enabled_payout_methods'] ?? ''))));
+                                ?>
+                                <div class="mb-4">
+                                    <p class="block text-sm font-medium text-gray-700">Enabled Payout Methods</p>
+                                    <input type="hidden" name="enabled_payout_methods[]" value="">
+                                    <div class="mt-2 space-y-2">
+                                        <label class="inline-flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                name="enabled_payout_methods[]"
+                                                value="stripe_customer_balance"
+                                                id="enabled_payout_method_stripe_customer_balance"
+                                                <?= in_array('stripe_customer_balance', $enabledPayoutMethods, true) ? 'checked' : '' ?>
+                                                class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                            <span class="text-sm text-gray-700">Stripe Customer Balance</span>
+                                        </label>
+                                        <label class="inline-flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                name="enabled_payout_methods[]"
+                                                value="tremendous"
+                                                id="enabled_payout_method_tremendous"
+                                                <?= in_array('tremendous', $enabledPayoutMethods, true) ? 'checked' : '' ?>
+                                                class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                            <span class="text-sm text-gray-700">Tremendous</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="mb-4" id="stripe_min_payout_container">
+                                    <label for="min_payout_amount_stripe_customer_balance" class="block text-sm font-medium text-gray-700">Minimum Payout Amount (Stripe Customer Balance)</label>
+                                    <input
+                                        type="number"
+                                        name="min_payout_amount_stripe_customer_balance"
+                                        id="min_payout_amount_stripe_customer_balance"
+                                        min="0"
+                                        step="0.01"
+                                        value="<?= htmlspecialchars($settings['min_payout_amount_stripe_customer_balance'] ?? $settings['min_payout_amount'] ?? '0.00') ?>"
+                                        class="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
+                                    <p class="mt-2 text-sm text-gray-500">Payouts are blocked until payable balance reaches this amount. Manual payouts are not blocked by this minimum.</p>
+                                </div>
+
+                                <div class="mb-4 hidden" id="tremendous_config_container">
+                                    <div class="rounded-md border border-gray-200 p-4">
+                                        <h4 class="text-sm font-semibold text-gray-900">Tremendous Configuration</h4>
+                                        <p class="mt-1 text-xs text-gray-500">Required for Tremendous payouts. Campaign IDs are configured per program.</p>
+
+                                        <div class="mt-3 space-y-3">
+                                            <div>
+                                                <label for="tremendous_api_key" class="block text-sm font-medium text-gray-700">API Key</label>
+                                                <input
+                                                    type="password"
+                                                    name="tremendous_api_key"
+                                                    id="tremendous_api_key"
+                                                    value=""
+                                                    class="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
+                                                <p class="mt-1 text-xs text-gray-500">Enter your Tremendous API key. Leave blank to keep the current key.</p>
+                                            </div>
+                                            <div>
+                                                <p class="mt-1 text-xs text-gray-500">Tremendous payouts use your account balance funding source.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mb-4 hidden" id="tremendous_min_payout_container">
+                                    <label for="min_payout_amount_tremendous" class="block text-sm font-medium text-gray-700">Minimum Payout Amount (Tremendous)</label>
+                                    <input
+                                        type="number"
+                                        name="min_payout_amount_tremendous"
+                                        id="min_payout_amount_tremendous"
+                                        min="0"
+                                        step="0.01"
+                                        value="<?= htmlspecialchars($settings['min_payout_amount_tremendous'] ?? $settings['min_payout_amount'] ?? '0.00') ?>"
+                                        class="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
+                                    <p class="mt-2 text-sm text-gray-500">Payouts are blocked until payable balance reaches this amount.</p>
+                                </div>
+
+                                <div class="mt-6">
+                                    <button type="submit" 
+                                            class="inline-flex justify-center rounded-md bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                                        Save Payout Settings
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Documentation Sidebar -->
@@ -312,4 +408,26 @@ function resetBranding() {
         form.submit();
     }
 }
+
+document.addEventListener('DOMContentLoaded', function () {
+    const stripeToggle = document.getElementById('enabled_payout_method_stripe_customer_balance');
+    const tremendousToggle = document.getElementById('enabled_payout_method_tremendous');
+    const stripeMinContainer = document.getElementById('stripe_min_payout_container');
+    const tremendousMinContainer = document.getElementById('tremendous_min_payout_container');
+    const tremendousConfigContainer = document.getElementById('tremendous_config_container');
+
+    if (!stripeToggle || !tremendousToggle || !stripeMinContainer || !tremendousMinContainer || !tremendousConfigContainer) {
+        return;
+    }
+
+    const syncVisibility = function () {
+        stripeMinContainer.classList.toggle('hidden', !stripeToggle.checked);
+        tremendousMinContainer.classList.toggle('hidden', !tremendousToggle.checked);
+        tremendousConfigContainer.classList.toggle('hidden', !tremendousToggle.checked);
+    };
+
+    stripeToggle.addEventListener('change', syncVisibility);
+    tremendousToggle.addEventListener('change', syncVisibility);
+    syncVisibility();
+});
 </script>
